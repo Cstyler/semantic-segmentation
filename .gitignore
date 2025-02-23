@@ -1,0 +1,9 @@
+.ipynb_checkpoints/
+Conglomerate_Concrete_Crack_Detection.zip
+Conglomerate_Concrete_Crack_Detection/
+best_model.pth
+env/
+isbi_2012_challenge.zip
+isbi_2012_challenge/
+model_graph
+model_graph.png
