@@ -1,7 +1,7 @@
 .ipynb_checkpoints/
 Conglomerate_Concrete_Crack_Detection.zip
 Conglomerate_Concrete_Crack_Detection/
-best_model.pth
+checkpoint.pth
 env/
 runs/
 isbi_2012_challenge.zip
