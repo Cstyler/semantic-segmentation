@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import optuna
 
 try:
     import subprocess
@@ -298,7 +299,7 @@ def iou_loss(predictions, targets, eps=1e-6):
     return iou
 
 
-def main():
+def train_fixed_hyperparams():
     (
         batch_size,
         train_image_dir,
@@ -378,6 +379,98 @@ def main():
         val_percent,
         vanilla_loss,
     )
+
+
+def tune_hyperparams():
+    def tuning_objective(trial: optuna.Trial):
+        flip_prob = trial
+        rotate_prob = 0.1
+        elastic_prob = 0.11
+        translate_prob = 0.1
+        brightness_prob = 0.1
+        train_dataloader, val_dataloader = init_data_loaders(
+            batch_size,
+            brightness_prob,
+            elastic_prob,
+            flip_prob,
+            rotate_prob,
+            train_image_dir,
+            train_images,
+            train_mask_dir,
+            translate_prob,
+            val_images,
+        )
+
+        lr = 1e-4
+        num_epochs = 100
+        min_save_epoch = 2
+        loss_w0, loss_sigma = 5, 5
+        loss_w1 = 1.0
+        dropout_p = 0.2
+        early_stop_patience = 30
+        max_save_diff = 0.0005
+        max_error_diff = 0.002
+        overfit_patience = 5
+        vanilla_loss = True
+        use_adam = True
+        use_cosine_scheduler = False
+        min_lr = 1e-7
+        # CosineAnnealingWarmRestarts
+        t_0 = 1
+        t_mult = 2
+        # ReduceLROnPlateau
+        lr_patience = 20
+        lr_cooldown = 5
+        lr_factor = 0.1
+
+        fit(
+            brightness_prob,
+            dropout_p,
+            early_stop_patience,
+            elastic_prob,
+            flip_prob,
+            loss_sigma,
+            loss_w0,
+            loss_w1,
+            lr,
+            lr_cooldown,
+            lr_factor,
+            lr_patience,
+            max_error_diff,
+            max_save_diff,
+            min_lr,
+            min_save_epoch,
+            num_epochs,
+            overfit_patience,
+            rotate_prob,
+            t_0,
+            t_mult,
+            train_dataloader,
+            translate_prob,
+            use_adam,
+            use_cosine_scheduler,
+            val_dataloader,
+            val_percent,
+            vanilla_loss,
+        )
+    (
+        batch_size,
+        train_image_dir,
+        train_images,
+        train_mask_dir,
+        val_images,
+        val_percent,
+    ) = init_datasets()
+
+    study = optuna.create_study(
+        direction="maximize",
+        pruner=optuna.pruners.MedianPruner(
+            n_startup_trials=5, n_warmup_steps=30, interval_steps=10
+        ),
+    )
+    study.optimize(tuning_objective, n_trials=20)
+
+
 
 
 def fit(
