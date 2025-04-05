@@ -383,11 +383,11 @@ def train_fixed_hyperparams():
 
 def tune_hyperparams():
     def tuning_objective(trial: optuna.Trial):
-        flip_prob = trial
-        rotate_prob = 0.1
-        elastic_prob = 0.11
-        translate_prob = 0.1
-        brightness_prob = 0.1
+        flip_prob = trial.suggest_float("flip_prob", 0.001, 0.6)
+        rotate_prob = trial.suggest_float("rotate_prob", 0.001, 0.6)
+        elastic_prob = trial.suggest_float("elastic_prob", 0.001, 0.6)
+        translate_prob = trial.suggest_float("translate_prob", 0.001, 0.6)
+        brightness_prob = trial.suggest_float("brightness_prob", 0.001, 0.6)
         train_dataloader, val_dataloader = init_data_loaders(
             batch_size,
             brightness_prob,
@@ -401,16 +401,17 @@ def tune_hyperparams():
             val_images,
         )
 
-        lr = 1e-4
+        lr = trial.suggest_float("lr", 1e-8, 1e-3)
         num_epochs = 100
-        min_save_epoch = 2
-        loss_w0, loss_sigma = 5, 5
-        loss_w1 = 1.0
-        dropout_p = 0.2
+        min_save_epoch = num_epochs
+        loss_w0 = trial.suggest_float("loss_w0", 0.1, 10.0)
+        loss_sigma = trial.suggest_float("loss_sigma", 0.1, 10.0)
+        loss_w1 = trial.suggest_float("loss_w1", 0.1, 10.0)
+        dropout_p = trial.suggest_float("dropout_p", 0.01, 0.6)
         early_stop_patience = 30
         max_save_diff = 0.0005
         max_error_diff = 0.002
-        overfit_patience = 5
+        overfit_patience = num_epochs
         vanilla_loss = True
         use_adam = True
         use_cosine_scheduler = False
@@ -453,6 +454,7 @@ def tune_hyperparams():
             val_percent,
             vanilla_loss,
         )
+
     (
         batch_size,
         train_image_dir,
@@ -463,14 +465,12 @@ def tune_hyperparams():
     ) = init_datasets()
 
     study = optuna.create_study(
-        direction="maximize",
+        direction="minimize",
         pruner=optuna.pruners.MedianPruner(
             n_startup_trials=5, n_warmup_steps=30, interval_steps=10
         ),
     )
-    study.optimize(tuning_objective, n_trials=20)
-
-
+    study.optimize(tuning_objective, n_trials=50)
 
 
 def fit(
