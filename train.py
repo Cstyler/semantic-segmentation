@@ -36,6 +36,7 @@ seed = 7
 random.seed(seed)
 torch.manual_seed(seed)
 
+
 class UNet(nn.Module):
     def __init__(self, in_channels=1, out_channels=2, init_features=64, dropout_p=0.5):
         # TODO adjust dropout probability
@@ -51,19 +52,19 @@ class UNet(nn.Module):
         self.bottleneck_encoder = block(
             features * 8, features * 16, kernel_size, "bottleneck_enc"
         )
-        self.upconv1 = nn.ConvTranspose2d(
+        self.up_conv1 = nn.ConvTranspose2d(
             features * 16, features * 8, kernel_size=2, stride=2
         )
         self.decoder1 = block(features * 16, features * 8, kernel_size, "dec1")
-        self.upconv2 = nn.ConvTranspose2d(
+        self.up_conv2 = nn.ConvTranspose2d(
             features * 8, features * 4, kernel_size=2, stride=2
         )
         self.decoder2 = block(features * 8, features * 4, kernel_size, "dec2")
-        self.upconv3 = nn.ConvTranspose2d(
+        self.up_conv3 = nn.ConvTranspose2d(
             features * 4, features * 2, kernel_size=2, stride=2
         )
         self.decoder3 = block(features * 4, features * 2, kernel_size, "dec3")
-        self.upconv4 = nn.ConvTranspose2d(
+        self.up_conv4 = nn.ConvTranspose2d(
             features * 2, features, kernel_size=2, stride=2
         )
         self.decoder4 = block(features * 2, features, kernel_size, "dec4")
@@ -77,46 +78,48 @@ class UNet(nn.Module):
         drop = self.dropout(enc4)
         bottleneck = self.bottleneck_encoder(self.pool(drop))
 
-        upconv1 = self.upconv1(bottleneck)
-        crop_bot, crop_top = crop_size(enc4, upconv1)
+        up_conv1 = self.up_conv1(bottleneck)
+        crop_bot, crop_top = crop_size(enc4, up_conv1)
         dec1 = self.decoder1(
             torch.cat(
-                (enc4[:, :, crop_bot:crop_top, crop_bot:crop_top], upconv1), dim=1
+                (enc4[:, :, crop_bot:crop_top, crop_bot:crop_top], up_conv1), dim=1
             )
         )
 
-        upconv2 = self.upconv2(dec1)
-        crop_bot, crop_top = crop_size(enc3, upconv2)
+        up_conv2 = self.up_conv2(dec1)
+        crop_bot, crop_top = crop_size(enc3, up_conv2)
         dec2 = self.decoder2(
             torch.cat(
-                (enc3[:, :, crop_bot:crop_top, crop_bot:crop_top], upconv2), dim=1
+                (enc3[:, :, crop_bot:crop_top, crop_bot:crop_top], up_conv2), dim=1
             )
         )
 
-        upconv3 = self.upconv3(dec2)
-        crop_bot, crop_top = crop_size(enc2, upconv3)
+        up_conv3 = self.up_conv3(dec2)
+        crop_bot, crop_top = crop_size(enc2, up_conv3)
         dec3 = self.decoder3(
             torch.cat(
-                (enc2[:, :, crop_bot:crop_top, crop_bot:crop_top], upconv3), dim=1
+                (enc2[:, :, crop_bot:crop_top, crop_bot:crop_top], up_conv3), dim=1
             )
         )
 
-        upconv4 = self.upconv4(dec3)
-        crop_bot, crop_top = crop_size(enc1, upconv4)
+        up_conv4 = self.up_conv4(dec3)
+        crop_bot, crop_top = crop_size(enc1, up_conv4)
         dec4 = self.decoder4(
             torch.cat(
-                (enc1[:, :, crop_bot:crop_top, crop_bot:crop_top], upconv4), dim=1
+                (enc1[:, :, crop_bot:crop_top, crop_bot:crop_top], up_conv4), dim=1
             )
         )
 
         output = self.out_conv(dec4)
         return output
 
-def crop_size(encoder, upconv) -> tuple:
-    "Return crop size of encoder's feature maps so it fits upconv's shape"
+
+def crop_size(encoder, up_conv) -> tuple:
+    """Return crop size of encoder's feature maps so it fits up-conv's shape"""
     x = encoder.shape[2]
-    y = upconv.shape[2]
+    y = up_conv.shape[2]
     return (x - y) // 2, (x + y) // 2
+
 
 def block(
     in_channels: int, features: int, kernel_size: int, name: str
@@ -131,6 +134,7 @@ def block(
             ]
         )
     )
+
 
 class SegmentationDataset(Dataset):
     def __init__(
@@ -156,6 +160,7 @@ class SegmentationDataset(Dataset):
         if self.transform:
             image, mask = self.transform(image, mask)
         return image, mask
+
 
 class ImageMaskTransform:
     def __init__(
@@ -265,7 +270,8 @@ class ImageMaskTransform:
 
         return image, mask
 
-def cross_enthropy_weighted(
+
+def cross_entropy_weighted(
     outputs, targets, device, w0=5, sigma=5, w1=1.0, vanilla=False
 ):
     if vanilla:
@@ -291,53 +297,34 @@ def iou_loss(predictions, targets, eps=1e-6):
     iou = (intersection + eps) / (union + eps)
     return iou
 
+
 def main():
-    train_image_dir = os.path.join(base_dir, "isbi_2012_challenge/train/imgs")
-    train_mask_dir = os.path.join(base_dir, "isbi_2012_challenge/train/labels")
-
-    batch_size = 9
-    val_percent = 0.2
-
-    if LOCAL:
-        batch_size = 1
-
-    all_images = os.listdir(train_image_dir)
-    val_size = int(val_percent * len(all_images))
-    train_size = len(all_images) - val_size
-    random.shuffle(all_images)
-    val_images = all_images[:val_size]
-    train_images = all_images[val_size:]
+    (
+        batch_size,
+        train_image_dir,
+        train_images,
+        train_mask_dir,
+        val_images,
+        val_percent,
+    ) = init_datasets()
 
     flip_prob = 0.1
     rotate_prob = 0.1
     elastic_prob = 0.11
     translate_prob = 0.1
     brightness_prob = 0.1
-    train_transform = ImageMaskTransform(
-        flip_prob=flip_prob,
-        rotate_prob=rotate_prob,
-        elastic_prob=elastic_prob,
-        translate_prob=translate_prob,
-        brightness_prob=brightness_prob,
-        elastic_alpha=200.0,
-        elastic_sigma=7.0,
-        rotate_angle=30,
-        translate_factor=0.1,
-        min_brightness=0.1,
-        max_brightness=1.7,
+    train_dataloader, val_dataloader = init_data_loaders(
+        batch_size,
+        brightness_prob,
+        elastic_prob,
+        flip_prob,
+        rotate_prob,
+        train_image_dir,
+        train_images,
+        train_mask_dir,
+        translate_prob,
+        val_images,
     )
-    train_dataset = SegmentationDataset(
-        train_image_dir, train_mask_dir, train_images, transform=train_transform
-    )
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-
-    val_transform = ImageMaskTransform(train=False)
-    val_dataset = SegmentationDataset(
-        train_image_dir, train_mask_dir, val_images, transform=val_transform
-    )
-    val_dataloader = DataLoader(val_dataset, batch_size=batch_size)
-
-
 
     lr = 1e-4
     num_epochs = 100
@@ -354,19 +341,80 @@ def main():
     use_cosine_scheduler = False
     min_lr = 1e-7
     # CosineAnnealingWarmRestarts
-    T_0 = 1
-    T_mult = 2
+    t_0 = 1
+    t_mult = 2
     # ReduceLROnPlateau
     lr_patience = 20
     lr_cooldown = 5
     lr_factor = 0.1
 
+    fit(
+        brightness_prob,
+        dropout_p,
+        early_stop_patience,
+        elastic_prob,
+        flip_prob,
+        loss_sigma,
+        loss_w0,
+        loss_w1,
+        lr,
+        lr_cooldown,
+        lr_factor,
+        lr_patience,
+        max_error_diff,
+        max_save_diff,
+        min_lr,
+        min_save_epoch,
+        num_epochs,
+        overfit_patience,
+        rotate_prob,
+        t_0,
+        t_mult,
+        train_dataloader,
+        translate_prob,
+        use_adam,
+        use_cosine_scheduler,
+        val_dataloader,
+        val_percent,
+        vanilla_loss,
+    )
+
+
+def fit(
+    brightness_prob,
+    dropout_p,
+    early_stop_patience,
+    elastic_prob,
+    flip_prob,
+    loss_sigma,
+    loss_w0,
+    loss_w1,
+    lr,
+    lr_cooldown,
+    lr_factor,
+    lr_patience,
+    max_error_diff,
+    max_save_diff,
+    min_lr,
+    min_save_epoch,
+    num_epochs,
+    overfit_patience,
+    rotate_prob,
+    t_0,
+    t_mult,
+    train_dataloader,
+    translate_prob,
+    use_adam,
+    use_cosine_scheduler,
+    val_dataloader,
+    val_percent,
+    vanilla_loss,
+):
     no_improve_epochs = 0
     overfit_epochs = 0
     best_rand_error = torch.tensor(float("inf"))
     best_epoch = -1
     best_weights = None
-
     model = UNet(dropout_p=dropout_p)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pretrained_weights_path = os.path.join(base_dir, "checkpoints/C1.pth")
@@ -379,7 +427,7 @@ def main():
     )
     scheduler = (
         optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optimizer, T_0=T_0, T_mult=T_mult, eta_min=min_lr
+            optimizer, T_0=t_0, T_mult=t_mult, eta_min=min_lr
         )
         if use_cosine_scheduler
         else optim.lr_scheduler.ReduceLROnPlateau(
@@ -390,12 +438,10 @@ def main():
             min_lr=min_lr,
         )
     )
-
     log_dir = os.path.join(
         base_dir, f"runs/run_{datetime.datetime.now().strftime('%m%d-%H%M%S')}"
     )
     writer = SummaryWriter(log_dir=log_dir)
-
     accuracy_metric_val = BinaryAccuracy().to(device)
     precision_metric_val = BinaryPrecision().to(device)
     recall_metric_val = BinaryRecall().to(device)
@@ -404,7 +450,6 @@ def main():
     precision_metric_train = BinaryPrecision().to(device)
     recall_metric_train = BinaryRecall().to(device)
     rand_score_metric_train = RandScore().to(device)
-
     for epoch in range(num_epochs):
         model.train()
         train_loss = 0.0
@@ -412,7 +457,7 @@ def main():
             images, labels = images.to(device), labels.to(device)
             optimizer.zero_grad()
             outputs = model(images)
-            loss = cross_enthropy_weighted(
+            loss = cross_entropy_weighted(
                 outputs,
                 labels.squeeze(1),
                 device,
@@ -432,7 +477,7 @@ def main():
                 images, labels = images.to(device), labels.to(device)
                 outputs = model(images)
                 labels = labels.squeeze(1)
-                loss = cross_enthropy_weighted(
+                loss = cross_entropy_weighted(
                     outputs,
                     labels,
                     device,
@@ -502,7 +547,9 @@ def main():
             best_epoch = epoch + 1
 
             if best_epoch > min_save_epoch and val_train_diff < max_save_diff:
-                best_weights = {k: v.detach().cpu() for k, v in model.state_dict().items()}
+                best_weights = {
+                    k: v.detach().cpu() for k, v in model.state_dict().items()
+                }
                 print(f"Saved the weights in RAM for the epoch {best_epoch}")
         else:
             no_improve_epochs += 1
@@ -520,11 +567,6 @@ def main():
         if overfit_epochs >= overfit_patience:
             print("Early stop, overfit")
             break
-
-    if best_weights:
-        torch.save(best_weights, os.path.join(base_dir, "checkpoint.pth"))
-        print("Saved the best weights after the training")
-
     hparams_dict = dict(
         lr=lr,
         num_epochs=num_epochs,
@@ -538,8 +580,8 @@ def main():
         use_adam=use_adam,
         use_cosine_scheduler=use_cosine_scheduler,
         min_lr=min_lr,
-        T_0=T_0,
-        T_mult=T_mult,
+        T_0=t_0,
+        T_mult=t_mult,
         lr_patience=lr_patience,
         lr_cooldown=lr_cooldown,
         flip_prob=flip_prob,
@@ -555,5 +597,66 @@ def main():
         hparams_dict,
         {"hparam/rand_error": best_rand_error, "hparam/best_epoch": best_epoch},
     )
-
     writer.close()
+    if best_weights:
+        torch.save(best_weights, os.path.join(base_dir, "checkpoint.pth"))
+        print("Saved the best weights after the training")
+
+
+def init_data_loaders(
+    batch_size,
+    brightness_prob,
+    elastic_prob,
+    flip_prob,
+    rotate_prob,
+    train_image_dir,
+    train_images,
+    train_mask_dir,
+    translate_prob,
+    val_images,
+):
+    train_transform = ImageMaskTransform(
+        flip_prob=flip_prob,
+        rotate_prob=rotate_prob,
+        elastic_prob=elastic_prob,
+        translate_prob=translate_prob,
+        brightness_prob=brightness_prob,
+        elastic_alpha=200.0,
+        elastic_sigma=7.0,
+        rotate_angle=30,
+        translate_factor=0.1,
+        min_brightness=0.1,
+        max_brightness=1.7,
+    )
+    train_dataset = SegmentationDataset(
+        train_image_dir, train_mask_dir, train_images, transform=train_transform
+    )
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_transform = ImageMaskTransform(train=False)
+    val_dataset = SegmentationDataset(
+        train_image_dir, train_mask_dir, val_images, transform=val_transform
+    )
+    val_dataloader = DataLoader(val_dataset, batch_size=batch_size)
+    return train_dataloader, val_dataloader
+
+
+def init_datasets():
+    train_image_dir = os.path.join(base_dir, "isbi_2012_challenge/train/imgs")
+    train_mask_dir = os.path.join(base_dir, "isbi_2012_challenge/train/labels")
+    batch_size = 9
+    val_percent = 0.2
+    if LOCAL:
+        batch_size = 1
+    all_images = os.listdir(train_image_dir)
+    val_size = int(val_percent * len(all_images))
+    random.shuffle(all_images)
+    val_images = all_images[:val_size]
+    train_images = all_images[val_size:]
+    return (
+        batch_size,
+        train_image_dir,
+        train_images,
+        train_mask_dir,
+        val_images,
+        val_percent,
+    )
