@@ -395,18 +395,30 @@ def tune_hyperparams():
             val_images,
         )
 
-        lr = trial.suggest_float("lr", 1e-8, 1e-3)
         num_epochs = 100
-        min_save_epoch = num_epochs
-        dropout_p = trial.suggest_float("dropout_p", 0.01, 0.6)
         early_stop_patience = 30
-        vanilla_loss = True
-        loss_w0 = trial.suggest_float("loss_w0", 0.1, 10.0)
-        loss_sigma = trial.suggest_float("loss_sigma", 0.1, 10.0)
-        loss_w1 = trial.suggest_float("loss_w1", 0.1, 10.0)
-        use_adam = True
+        min_save_epoch = num_epochs
+
+        dropout_p = trial.suggest_float("dropout_p", 0.01, 0.6)
+        vanilla_loss = trial.suggest_categorical("vanilla_loss", [True, False])
+        if vanilla_loss:
+            loss_w0, loss_sigma, loss_w1 = 0.1, 0.1, 0.1
+        else:
+            loss_w0 = trial.suggest_float("loss_w0", 0.1, 10.0)
+            loss_sigma = trial.suggest_float("loss_sigma", 0.1, 10.0)
+            loss_w1 = trial.suggest_float("loss_w1", 0.1, 10.0)
+
+        bool_choices = (True, False)
+        use_adam = trial.suggest_categorical("use_adam", bool_choices)
+        if use_adam:
+            lr = trial.suggest_float("lr", 1e-6, 1e-3)
+        else:
+            lr = trial.suggest_float("lr", 1e-4, 1e-1)
+        use_cosine_scheduler = trial.suggest_categorical(
+            "use_cosine_scheduler", bool_choices
+        )
         min_lr = 1e-7
-        use_cosine_scheduler = False
+
         # CosineAnnealingWarmRestarts
         t_0 = 1
         t_mult = 2
