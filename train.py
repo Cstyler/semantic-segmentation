@@ -334,9 +334,6 @@ def train_fixed_hyperparams():
     loss_w1 = 1.0
     dropout_p = 0.2
     early_stop_patience = 30
-    max_save_diff = 0.0005
-    max_error_diff = 0.002
-    overfit_patience = 5
     vanilla_loss = True
     use_adam = True
     use_cosine_scheduler = False
@@ -362,12 +359,9 @@ def train_fixed_hyperparams():
         lr_cooldown,
         lr_factor,
         lr_patience,
-        max_error_diff,
-        max_save_diff,
         min_lr,
         min_save_epoch,
         num_epochs,
-        overfit_patience,
         rotate_prob,
         t_0,
         t_mult,
@@ -404,18 +398,15 @@ def tune_hyperparams():
         lr = trial.suggest_float("lr", 1e-8, 1e-3)
         num_epochs = 100
         min_save_epoch = num_epochs
+        dropout_p = trial.suggest_float("dropout_p", 0.01, 0.6)
+        early_stop_patience = 30
+        vanilla_loss = True
         loss_w0 = trial.suggest_float("loss_w0", 0.1, 10.0)
         loss_sigma = trial.suggest_float("loss_sigma", 0.1, 10.0)
         loss_w1 = trial.suggest_float("loss_w1", 0.1, 10.0)
-        dropout_p = trial.suggest_float("dropout_p", 0.01, 0.6)
-        early_stop_patience = 30
-        max_save_diff = 0.0005
-        max_error_diff = 0.002
-        overfit_patience = num_epochs
-        vanilla_loss = True
         use_adam = True
-        use_cosine_scheduler = False
         min_lr = 1e-7
+        use_cosine_scheduler = False
         # CosineAnnealingWarmRestarts
         t_0 = 1
         t_mult = 2
@@ -437,12 +428,9 @@ def tune_hyperparams():
             lr_cooldown,
             lr_factor,
             lr_patience,
-            max_error_diff,
-            max_save_diff,
             min_lr,
             min_save_epoch,
             num_epochs,
-            overfit_patience,
             rotate_prob,
             t_0,
             t_mult,
@@ -486,12 +474,9 @@ def fit(
     lr_cooldown,
     lr_factor,
     lr_patience,
-    max_error_diff,
-    max_save_diff,
     min_lr,
     min_save_epoch,
     num_epochs,
-    overfit_patience,
     rotate_prob,
     t_0,
     t_mult,
@@ -504,7 +489,6 @@ def fit(
     vanilla_loss,
 ):
     no_improve_epochs = 0
-    overfit_epochs = 0
     best_rand_error = torch.tensor(float("inf"))
     best_epoch = -1
     best_weights = None
@@ -610,7 +594,6 @@ def fit(
         }
 
         val_rand_error = scalars["RandError/val"]
-        train_rand_error = scalars["RandError/train"]
         if use_cosine_scheduler:
             scheduler.step()
         else:
@@ -633,13 +616,12 @@ def fit(
         precision_metric_train.reset()
         rand_score_metric_train.reset()
 
-        val_train_diff = val_rand_error - train_rand_error
         if val_rand_error < best_rand_error:
             no_improve_epochs = 0
             best_rand_error = val_rand_error
             best_epoch = epoch + 1
 
-            if best_epoch > min_save_epoch and val_train_diff < max_save_diff:
+            if best_epoch > min_save_epoch:
                 best_weights = {
                     k: v.detach().cpu() for k, v in model.state_dict().items()
                 }
@@ -651,15 +633,6 @@ def fit(
             print(f"Early stop, best val rand error: {best_rand_error:.4f}")
             break
 
-        if val_train_diff > max_error_diff:
-            overfit_epochs += 1
-            print(
-                f"Overfitting detected, val rand error is greater by: {val_train_diff:.4f}"
-            )
-
-        if overfit_epochs >= overfit_patience:
-            print("Early stop, overfit")
-            break
     hparams_dict = dict(
         lr=lr,
         num_epochs=num_epochs,
