@@ -328,6 +328,7 @@ def train_fixed_hyperparams():
     )
 
     lr = 1e-4
+    momentum = 0.99
     num_epochs = 100
     min_save_epoch = 2
     loss_w0, loss_sigma = 5, 5
@@ -356,6 +357,7 @@ def train_fixed_hyperparams():
         loss_w0,
         loss_w1,
         lr,
+        momentum,
         lr_cooldown,
         lr_factor,
         lr_patience,
@@ -412,8 +414,10 @@ def tune_hyperparams():
         use_adam = trial.suggest_categorical("use_adam", bool_choices)
         if use_adam:
             lr = trial.suggest_float("lr", 1e-6, 1e-3, log=True)
+            momentum = 0.99
         else:
             lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
+            momentum = trial.suggest_float("momentum", 0.1, 0.995)
         use_cosine_scheduler = trial.suggest_categorical(
             "use_cosine_scheduler", bool_choices
         )
@@ -445,6 +449,7 @@ def tune_hyperparams():
             loss_w0,
             loss_w1,
             lr,
+            momentum,
             lr_cooldown,
             lr_factor,
             lr_patience,
@@ -491,6 +496,7 @@ def fit(
     loss_w0,
     loss_w1,
     lr,
+    momentum,
     lr_cooldown,
     lr_factor,
     lr_patience,
@@ -518,7 +524,7 @@ def fit(
     optimizer = (
         optim.Adam(model.parameters(), lr=lr)
         if use_adam
-        else optim.SGD(model.parameters(), lr=lr)
+        else optim.SGD(model.parameters(), lr=lr, momentum=momentum)
     )
     scheduler = (
         optim.lr_scheduler.CosineAnnealingWarmRestarts(
@@ -653,6 +659,7 @@ def fit(
 
     hparams_dict = dict(
         lr=lr,
+        momentum=momentum,
         num_epochs=num_epochs,
         min_save_epoch=min_save_epoch,
         loss_w0=loss_w0,
@@ -668,6 +675,7 @@ def fit(
         T_mult=t_mult,
         lr_patience=lr_patience,
         lr_cooldown=lr_cooldown,
+        lr_factor=lr_factor,
         flip_prob=flip_prob,
         rotate_prob=rotate_prob,
         elastic_prob=elastic_prob,
