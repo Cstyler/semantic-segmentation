@@ -413,7 +413,7 @@ def tune_hyperparams():
         bool_choices = (True, False)
         use_adam = trial.suggest_categorical("use_adam", bool_choices)
         if use_adam:
-            lr = trial.suggest_float("lr", 1e-6, 1e-3, log=True)
+            lr = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
             momentum = 0.99
         else:
             lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
@@ -435,7 +435,7 @@ def tune_hyperparams():
         else:
             t_0 = 1
             t_mult = 2
-            lr_patience = trial.suggest_int("lr_patience", 5, 20, step=5)
+            lr_patience = trial.suggest_int("lr_patience", 5, 25, step=2)
             lr_cooldown = trial.suggest_int("lr_cooldown", 0, 5)
             lr_factor = trial.suggest_float("lr_factor", 0.05, 0.5, log=True)
 
