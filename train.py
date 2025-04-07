@@ -411,21 +411,29 @@ def tune_hyperparams():
         bool_choices = (True, False)
         use_adam = trial.suggest_categorical("use_adam", bool_choices)
         if use_adam:
-            lr = trial.suggest_float("lr", 1e-6, 1e-3)
+            lr = trial.suggest_float("lr", 1e-6, 1e-3, log=True)
         else:
-            lr = trial.suggest_float("lr", 1e-4, 1e-1)
+            lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
         use_cosine_scheduler = trial.suggest_categorical(
             "use_cosine_scheduler", bool_choices
         )
-        min_lr = 1e-7
+        min_lr = trial.suggest_float("min_lr", 1e-8, 1e-7, log=True)
 
-        # CosineAnnealingWarmRestarts
-        t_0 = 1
-        t_mult = 2
-        # ReduceLROnPlateau
-        lr_patience = 20
-        lr_cooldown = 5
-        lr_factor = 0.1
+        if use_cosine_scheduler:
+            configs = [(1, 2), (10, 2), (50, 1), (100, 1)]
+            config_index = trial.suggest_categorical(
+                "cosine_scheduler_config", tuple(range(len(configs)))
+            )
+            t_0, t_mult = configs[config_index]
+            lr_patience = 20
+            lr_cooldown = 5
+            lr_factor = 0.1
+        else:
+            t_0 = 1
+            t_mult = 2
+            lr_patience = trial.suggest_int("lr_patience", 5, 20, step=5)
+            lr_cooldown = trial.suggest_int("lr_cooldown", 0, 5)
+            lr_factor = trial.suggest_float("lr_factor", 0.05, 0.5, log=True)
 
         fit(
             brightness_prob,
@@ -506,8 +514,6 @@ def fit(
     best_weights = None
     model = UNet(dropout_p=dropout_p)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    pretrained_weights_path = os.path.join(base_dir, "checkpoints/C1.pth")
-    model.load_state_dict(torch.load(pretrained_weights_path, map_location=device))
     model.to(device)
     optimizer = (
         optim.Adam(model.parameters(), lr=lr)
