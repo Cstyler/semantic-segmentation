@@ -2,12 +2,10 @@
 .ipynb_checkpoints
 .virtual_documents
 __pycache__
-Conglomerate_Concrete_Crack_Detection.zip
 Conglomerate_Concrete_Crack_Detection
 checkpoints
 env
 runs
-isbi_2012_challenge.zip
+Data
 isbi_2012_challenge
 DIC-C2DH-HeLa-Train
-DIC-C2DH-HeLa.zip

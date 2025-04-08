@@ -6,7 +6,7 @@ try:
 
     from google.colab import drive
 
-    subprocess.run(["pip", "install", "torchmetrics"])
+    subprocess.run(["pip", "install", "torchmetrics", "optuna"])
     base_dir = "/content/drive/MyDrive/Colab_Notebooks/Crack_Detection"
     drive.mount("/content/drive")
     LOCAL = False
@@ -477,8 +477,11 @@ def tune_hyperparams():
         val_percent,
     ) = init_datasets()
 
+    storage = "sqlite:///Data/seg-study.db"
     study = optuna.create_study(
         direction="minimize",
+        study_name=f"study-{datetime.datetime.now().strftime('%m%d-%H%M%S')}",
+        storage=storage,
         pruner=optuna.pruners.MedianPruner(
             n_startup_trials=5, n_warmup_steps=30, interval_steps=10
         ),
