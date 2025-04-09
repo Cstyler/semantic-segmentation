@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-import optuna
-
 try:
     import subprocess
 
@@ -14,12 +12,15 @@ except ImportError:
     base_dir = "."
     LOCAL = True
 
+
 import datetime
 import json
 import os
 import random
 from collections import OrderedDict
+from contextlib import redirect_stdout, redirect_stderr
 
+import optuna
 import torch
 import torch.nn as nn
 import torchvision.transforms.functional as F
@@ -478,15 +479,20 @@ def tune_hyperparams():
     ) = init_datasets()
 
     storage = "sqlite:///Data/seg-study.db"
+    study_name = f"study-{datetime.datetime.now().strftime('%m%d-%H%M%S')}"
     study = optuna.create_study(
         direction="minimize",
-        study_name=f"study-{datetime.datetime.now().strftime('%m%d-%H%M%S')}",
+        study_name=study_name,
         storage=storage,
         pruner=optuna.pruners.MedianPruner(
             n_startup_trials=5, n_warmup_steps=30, interval_steps=10
         ),
     )
-    study.optimize(tuning_objective, n_trials=50)
+    log_folder = "runs/studies"
+    os.makedirs(log_folder, exist_ok=True)
+    with open(f"{log_folder}/{study_name}.txt", "w") as f:
+        with redirect_stdout(f), redirect_stderr(f):
+            study.optimize(tuning_objective, n_trials=50)
 
 
 def fit(
