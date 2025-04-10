@@ -398,7 +398,7 @@ def tune_hyperparams():
             val_images,
         )
 
-        num_epochs = 100
+        num_epochs = 25
         early_stop_patience = 30
         min_save_epoch = num_epochs
 
@@ -467,6 +467,7 @@ def tune_hyperparams():
             val_dataloader,
             val_percent,
             vanilla_loss,
+            trial,
         )
 
     (
@@ -485,7 +486,7 @@ def tune_hyperparams():
         study_name=study_name,
         storage=storage,
         pruner=optuna.pruners.MedianPruner(
-            n_startup_trials=5, n_warmup_steps=30, interval_steps=10
+            n_startup_trials=3, n_warmup_steps=25, interval_steps=3
         ),
     )
     log_folder = "runs/studies"
@@ -523,6 +524,7 @@ def fit(
     val_dataloader,
     val_percent,
     vanilla_loss,
+    trial=None,
 ):
     no_improve_epochs = 0
     best_rand_error = torch.tensor(float("inf"))
@@ -666,6 +668,11 @@ def fit(
         if no_improve_epochs >= early_stop_patience:
             print(f"Early stop, best val rand error: {best_rand_error:.4f}")
             break
+
+        if trial:
+            trial.report(val_rand_error, epoch)
+            if trial.should_prune():
+                raise optuna.TrialPruned()
 
     hparams_dict = dict(
         lr=lr,
