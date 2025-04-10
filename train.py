@@ -440,7 +440,7 @@ def tune_hyperparams():
             lr_cooldown = trial.suggest_int("lr_cooldown", 0, 5)
             lr_factor = trial.suggest_float("lr_factor", 0.05, 0.5, log=True)
 
-        fit(
+        return fit(
             brightness_prob,
             dropout_p,
             early_stop_patience,
@@ -490,7 +490,8 @@ def tune_hyperparams():
     )
     log_folder = "runs/studies"
     os.makedirs(log_folder, exist_ok=True)
-    with open(f"{log_folder}/{study_name}.txt", "w") as f:
+
+    with open(f"{log_folder}/{study_name}.txt", "w", buffering=1) as f:
         with redirect_stdout(f), redirect_stderr(f):
             study.optimize(tuning_objective, n_trials=50)
 
@@ -702,6 +703,8 @@ def fit(
     if best_weights:
         torch.save(best_weights, os.path.join(base_dir, "checkpoint.pth"))
         print("Saved the best weights after the training")
+
+    return best_rand_error
 
 
 def init_data_loaders(
