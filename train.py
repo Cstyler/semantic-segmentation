@@ -469,7 +469,8 @@ def tune_hyperparams(base_dir: str, local: bool):
         val_percent,
     ) = init_datasets(base_dir, local)
 
-    storage = "sqlite:///Data/seg-study.db"
+    storage_file = os.path.join(base_dir, "Data/seg-study.db")
+    storage = f"sqlite:///{storage_file}"
     study_name = f"study-{datetime.datetime.now().strftime('%m%d-%H%M%S')}"
     study = optuna.create_study(
         direction="minimize",
