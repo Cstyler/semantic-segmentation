@@ -1,18 +1,4 @@
 #!/usr/bin/env python
-try:
-    import subprocess
-
-    from google.colab import drive
-
-    subprocess.run(["pip", "install", "torchmetrics", "optuna"])
-    base_dir = "/content/drive/MyDrive/Colab_Notebooks/Crack_Detection"
-    drive.mount("/content/drive")
-    LOCAL = False
-except ImportError:
-    base_dir = "."
-    LOCAL = True
-
-
 import datetime
 import json
 import os
@@ -300,7 +286,7 @@ def iou_loss(predictions, targets, eps=1e-6):
     return iou
 
 
-def train_fixed_hyperparams():
+def train_fixed_hyperparams(base_dir: str, local: bool):
     (
         batch_size,
         train_image_dir,
@@ -308,7 +294,7 @@ def train_fixed_hyperparams():
         train_mask_dir,
         val_images,
         val_percent,
-    ) = init_datasets()
+    ) = init_datasets(base_dir, local)
 
     flip_prob = 0.1
     rotate_prob = 0.1
@@ -375,10 +361,12 @@ def train_fixed_hyperparams():
         val_dataloader,
         val_percent,
         vanilla_loss,
+        base_dir,
+        local,
     )
 
 
-def tune_hyperparams():
+def tune_hyperparams(base_dir: str, local: bool):
     def tuning_objective(trial: optuna.Trial):
         flip_prob = trial.suggest_float("flip_prob", 0.001, 0.6)
         rotate_prob = trial.suggest_float("rotate_prob", 0.001, 0.6)
@@ -467,6 +455,8 @@ def tune_hyperparams():
             val_dataloader,
             val_percent,
             vanilla_loss,
+            base_dir,
+            local,
             trial,
         )
 
@@ -477,7 +467,7 @@ def tune_hyperparams():
         train_mask_dir,
         val_images,
         val_percent,
-    ) = init_datasets()
+    ) = init_datasets(base_dir, local)
 
     storage = "sqlite:///Data/seg-study.db"
     study_name = f"study-{datetime.datetime.now().strftime('%m%d-%H%M%S')}"
@@ -524,6 +514,8 @@ def fit(
     val_dataloader,
     val_percent,
     vanilla_loss,
+    base_dir: str,
+    local: bool,
     trial=None,
 ):
     no_improve_epochs = 0
@@ -582,6 +574,8 @@ def fit(
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
+            if local:
+                break
 
         model.eval()
         val_loss = 0.0
@@ -605,6 +599,8 @@ def fit(
                 recall_metric_val.update(preds, labels)
                 precision_metric_val.update(preds, labels)
                 rand_score_metric_val.update(preds.view(-1), labels.view(-1))
+                if local:
+                    break
 
             for images, labels in train_dataloader:
                 images, labels = images.to(device), labels.to(device)
@@ -615,6 +611,8 @@ def fit(
                 recall_metric_train.update(preds, labels)
                 precision_metric_train.update(preds, labels)
                 rand_score_metric_train.update(preds.view(-1), labels.view(-1))
+                if local:
+                    break
 
         scalars = {
             "Loss/train": train_loss / len(train_dataloader),
@@ -751,12 +749,14 @@ def init_data_loaders(
     return train_dataloader, val_dataloader
 
 
-def init_datasets():
+def init_datasets(
+    base_dir: str, local: bool
+) -> tuple[int, str, list, str, list, float]:
     train_image_dir = os.path.join(base_dir, "isbi_2012_challenge/train/imgs")
     train_mask_dir = os.path.join(base_dir, "isbi_2012_challenge/train/labels")
     batch_size = 9
     val_percent = 0.2
-    if LOCAL:
+    if local:
         batch_size = 1
     all_images = os.listdir(train_image_dir)
     val_size = int(val_percent * len(all_images))
