@@ -4,7 +4,6 @@ import json
 import os
 import random
 from collections import OrderedDict
-from contextlib import redirect_stdout, redirect_stderr
 
 import optuna
 import torch
@@ -424,7 +423,7 @@ def tune_hyperparams(base_dir: str, local: bool):
         else:
             t_0 = 1
             t_mult = 2
-            lr_patience = trial.suggest_int("lr_patience", 5, 25, step=2)
+            lr_patience = trial.suggest_int("lr_patience", 17, 25, step=2)
             lr_cooldown = trial.suggest_int("lr_cooldown", 0, 5)
             lr_factor = trial.suggest_float("lr_factor", 0.05, 0.5, log=True)
 
@@ -480,12 +479,7 @@ def tune_hyperparams(base_dir: str, local: bool):
             n_startup_trials=3, n_warmup_steps=25, interval_steps=3
         ),
     )
-    log_folder = os.path.join(base_dir, "runs/studies")
-    os.makedirs(log_folder, exist_ok=True)
-
-    with open(f"{log_folder}/{study_name}.txt", "w", buffering=1) as f:
-        with redirect_stdout(f), redirect_stderr(f):
-            study.optimize(tuning_objective, n_trials=15)
+    study.optimize(tuning_objective, n_trials=15)
 
 
 def fit(
