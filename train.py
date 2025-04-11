@@ -480,12 +480,12 @@ def tune_hyperparams(base_dir: str, local: bool):
             n_startup_trials=3, n_warmup_steps=25, interval_steps=3
         ),
     )
-    log_folder = "runs/studies"
+    log_folder = os.path.join(base_dir, "runs/studies")
     os.makedirs(log_folder, exist_ok=True)
 
     with open(f"{log_folder}/{study_name}.txt", "w", buffering=1) as f:
         with redirect_stdout(f), redirect_stderr(f):
-            study.optimize(tuning_objective, n_trials=50)
+            study.optimize(tuning_objective, n_trials=15)
 
 
 def fit(
