@@ -390,7 +390,8 @@ def tune_hyperparams(base_dir: str, local: bool):
         min_save_epoch = num_epochs
 
         dropout_p = trial.suggest_float("dropout_p", 0.01, 0.6)
-        vanilla_loss = trial.suggest_categorical("vanilla_loss", [True, False])
+        bool_choices = (True, False)
+        vanilla_loss = trial.suggest_categorical("vanilla_loss", bool_choices)
         if vanilla_loss:
             loss_w0, loss_sigma, loss_w1 = 0.1, 0.1, 0.1
         else:
@@ -398,7 +399,6 @@ def tune_hyperparams(base_dir: str, local: bool):
             loss_sigma = trial.suggest_float("loss_sigma", 0.1, 10.0)
             loss_w1 = trial.suggest_float("loss_w1", 0.1, 10.0)
 
-        bool_choices = (True, False)
         use_adam = trial.suggest_categorical("use_adam", bool_choices)
         if use_adam:
             lr = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
@@ -476,7 +476,7 @@ def tune_hyperparams(base_dir: str, local: bool):
         study_name=study_name,
         storage=storage,
         pruner=optuna.pruners.MedianPruner(
-            n_startup_trials=3, n_warmup_steps=25, interval_steps=3
+            n_startup_trials=3, n_warmup_steps=10, interval_steps=3
         ),
     )
     study.optimize(tuning_objective, n_trials=15)
@@ -508,7 +508,7 @@ def fit(
     use_cosine_scheduler,
     val_dataloader,
     val_percent,
-    vanilla_loss,
+    use_vanilla_loss,
     base_dir: str,
     local: bool,
     trial=None,
@@ -564,7 +564,7 @@ def fit(
                 loss_w0,
                 loss_sigma,
                 loss_w1,
-                vanilla=vanilla_loss,
+                vanilla=use_vanilla_loss,
             )
             loss.backward()
             optimizer.step()
@@ -573,7 +573,7 @@ def fit(
                 break
 
         model.eval()
-        val_loss = 0.0
+        val_loss, vanilla_loss_val = 0.0, 0.0
         with torch.no_grad():
             for images, labels in val_dataloader:
                 images, labels = images.to(device), labels.to(device)
@@ -586,8 +586,18 @@ def fit(
                     loss_w0,
                     loss_sigma,
                     loss_w1,
-                    vanilla=vanilla_loss,
+                    vanilla=use_vanilla_loss,
                 )
+                loss_vanilla = cross_entropy_weighted(
+                    outputs,
+                    labels,
+                    device,
+                    loss_w0,
+                    loss_sigma,
+                    loss_w1,
+                    vanilla=True,
+                )
+                vanilla_loss_val += loss_vanilla.item()
                 val_loss += loss.item()
                 preds = torch.argmax(outputs, dim=1)
                 accuracy_metric_val.update(preds, labels)
@@ -616,6 +626,7 @@ def fit(
             "Recall/train": recall_metric_train.compute(),
             "Precision/train": precision_metric_train.compute(),
             "Loss/val": val_loss / len(val_dataloader),
+            "VanillaLoss/val": vanilla_loss_val / len(val_dataloader),
             "RandError/val": 1 - rand_score_metric_val.compute(),
             "PixelError/val": 1 - accuracy_metric_val.compute(),
             "Recall/val": recall_metric_val.compute(),
@@ -663,7 +674,7 @@ def fit(
             break
 
         if trial:
-            trial.report(val_rand_error, epoch)
+            trial.report(scalars["VanillaLoss/val"], epoch)
             if trial.should_prune():
                 raise optuna.TrialPruned()
 
@@ -677,7 +688,7 @@ def fit(
         loss_w1=loss_w1,
         dropout_p=dropout_p,
         early_stop_patience=early_stop_patience,
-        vanilla_loss=vanilla_loss,
+        vanilla_loss=use_vanilla_loss,
         use_adam=use_adam,
         use_cosine_scheduler=use_cosine_scheduler,
         min_lr=min_lr,
