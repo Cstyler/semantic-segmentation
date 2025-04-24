@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall
 from torchmetrics.clustering import RandScore
-from torchvision.transforms import ElasticTransform
+from torchvision.transforms import ElasticTransform, PILToTensor
 
 seed = 7
 random.seed(seed)
@@ -125,7 +125,14 @@ def block(
 
 class SegmentationDataset(Dataset):
     def __init__(
-        self, image_dir: str, mask_dir: str, image_names: list, transform=None
+        self,
+        image_dir: str,
+        mask_dir: str,
+        image_names: list,
+        transform=None,
+        mean=0.4924,
+        std=0.1735,
+        foreground_value=255,
     ):
         self.transform = transform
         self.image_data = []
@@ -135,6 +142,9 @@ class SegmentationDataset(Dataset):
             mask_path = os.path.join(mask_dir, image_name)
             image = Image.open(image_path).convert("L")
             mask = Image.open(mask_path).convert("L")
+            image = F.to_tensor(image)
+            F.normalize(image, mean=[mean], std=[std], inplace=True)
+            mask = (PILToTensor()(mask) == foreground_value).long()
             self.image_data.append(image)
             self.mask_data.append(mask)
 
@@ -199,8 +209,6 @@ class ImageMaskTransform:
         return image, mask
 
     def __call__(self, image, mask):
-        image = F.to_tensor(image)
-        mask = F.to_tensor(mask).long()
         aligned = False
         if self.train:
             if random.random() < self.rotate_prob:
