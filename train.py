@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import datetime
 import json
+import math
 import os
 import random
 from collections import OrderedDict
@@ -393,10 +394,6 @@ def tune_hyperparams(base_dir: str, local: bool):
             val_images,
         )
 
-        num_epochs = 25
-        early_stop_patience = 30
-        min_save_epoch = num_epochs
-
         dropout_p = trial.suggest_float("dropout_p", 0.01, 0.6)
         bool_choices = (True, False)
         vanilla_loss = trial.suggest_categorical("vanilla_loss", bool_choices)
@@ -476,6 +473,10 @@ def tune_hyperparams(base_dir: str, local: bool):
         val_percent,
     ) = init_datasets(base_dir, local)
 
+    num_epochs = 25
+    early_stop_patience = 30
+    min_save_epoch = num_epochs
+
     storage_file = os.path.join(base_dir, "Data/seg-study.db")
     storage = f"sqlite:///{storage_file}"
     study_name = f"study-{datetime.datetime.now().strftime('%m%d-%H%M%S')}"
@@ -483,8 +484,8 @@ def tune_hyperparams(base_dir: str, local: bool):
         direction="minimize",
         study_name=study_name,
         storage=storage,
-        pruner=optuna.pruners.MedianPruner(
-            n_startup_trials=3, n_warmup_steps=10, interval_steps=3
+        pruner=optuna.pruners.HyperbandPruner(
+            min_resource=10, max_resource=num_epochs, reduction_factor=2
         ),
     )
     study.optimize(tuning_objective, n_trials=15)
@@ -558,6 +559,7 @@ def fit(
     precision_metric_train = BinaryPrecision().to(device)
     recall_metric_train = BinaryRecall().to(device)
     rand_score_metric_train = RandScore().to(device)
+    is_loss_invalid = False
     for epoch in range(num_epochs):
         model.train()
         train_loss = 0.0
@@ -577,9 +579,14 @@ def fit(
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
+            if math.isnan(train_loss) or math.isinf(train_loss):
+                is_loss_invalid = True
+                break
             if local:
                 break
 
+        if is_loss_invalid:
+            break
         model.eval()
         val_loss, vanilla_loss_val = 0.0, 0.0
         with torch.no_grad():
@@ -607,6 +614,10 @@ def fit(
                 )
                 vanilla_loss_val += loss_vanilla.item()
                 val_loss += loss.item()
+                if math.isnan(val_loss) or math.isinf(val_loss):
+                    is_loss_invalid = True
+                    break
+
                 preds = torch.argmax(outputs, dim=1)
                 accuracy_metric_val.update(preds, labels)
                 recall_metric_val.update(preds, labels)
@@ -614,6 +625,9 @@ def fit(
                 rand_score_metric_val.update(preds.view(-1), labels.view(-1))
                 if local:
                     break
+
+            if is_loss_invalid:
+                break
 
             for images, labels in train_dataloader:
                 images, labels = images.to(device), labels.to(device)
