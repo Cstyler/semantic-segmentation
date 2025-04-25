@@ -295,20 +295,16 @@ def iou_loss(predictions, targets, eps=1e-6):
 
 
 def train_fixed_hyperparams(base_dir: str, local: bool):
-    (
-        batch_size,
-        train_image_dir,
-        train_images,
-        train_mask_dir,
-        val_images,
-        val_percent,
-    ) = init_datasets(base_dir, local)
+    (train_image_dir, train_images, train_mask_dir, val_images, val_percent) = (
+        init_datasets(base_dir)
+    )
 
     flip_prob = 0.1
     rotate_prob = 0.1
     elastic_prob = 0.11
     translate_prob = 0.1
     brightness_prob = 0.1
+    batch_size = 1 if local else 9
     train_dataloader, val_dataloader = init_data_loaders(
         batch_size,
         brightness_prob,
@@ -381,6 +377,9 @@ def tune_hyperparams(base_dir: str, local: bool):
         elastic_prob = trial.suggest_float("elastic_prob", 0.001, 0.6)
         translate_prob = trial.suggest_float("translate_prob", 0.001, 0.6)
         brightness_prob = trial.suggest_float("brightness_prob", 0.001, 0.6)
+        batch_size = trial.suggest_int("batch_size", 4, 9)
+        if local:
+            batch_size = 1
         train_dataloader, val_dataloader = init_data_loaders(
             batch_size,
             brightness_prob,
@@ -464,14 +463,9 @@ def tune_hyperparams(base_dir: str, local: bool):
             trial,
         )
 
-    (
-        batch_size,
-        train_image_dir,
-        train_images,
-        train_mask_dir,
-        val_images,
-        val_percent,
-    ) = init_datasets(base_dir, local)
+    (train_image_dir, train_images, train_mask_dir, val_images, val_percent) = (
+        init_datasets(base_dir)
+    )
 
     num_epochs = 120
     early_stop_patience = 40
@@ -782,25 +776,17 @@ def init_data_loaders(
     return train_dataloader, val_dataloader
 
 
-def init_datasets(
-    base_dir: str, local: bool
-) -> tuple[int, str, list, str, list, float]:
+def init_datasets(base_dir: str) -> tuple[str, list, str, list, float]:
     train_image_dir = os.path.join(base_dir, "isbi_2012_challenge/train/imgs")
     train_mask_dir = os.path.join(base_dir, "isbi_2012_challenge/train/labels")
-    batch_size = 9
     val_percent = 0.2
-    if local:
-        batch_size = 1
     all_images = os.listdir(train_image_dir)
     val_size = int(val_percent * len(all_images))
     random.shuffle(all_images)
     val_images = all_images[:val_size]
     train_images = all_images[val_size:]
-    return (
-        batch_size,
-        train_image_dir,
-        train_images,
-        train_mask_dir,
-        val_images,
-        val_percent,
-    )
+    return train_image_dir, train_images, train_mask_dir, val_images, val_percent
+
+
+if __name__ == "__main__":
+    tune_hyperparams(".", local=False)
