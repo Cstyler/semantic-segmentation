@@ -428,7 +428,7 @@ def tune_hyperparams(base_dir: str, local: bool):
         else:
             t_0 = 1
             t_mult = 2
-            lr_patience = trial.suggest_int("lr_patience", 17, 25, step=2)
+            lr_patience = trial.suggest_int("lr_patience", 16, 30, step=2)
             lr_cooldown = trial.suggest_int("lr_cooldown", 0, 5)
             lr_factor = trial.suggest_float("lr_factor", 0.05, 0.5, log=True)
 
@@ -473,8 +473,8 @@ def tune_hyperparams(base_dir: str, local: bool):
         val_percent,
     ) = init_datasets(base_dir, local)
 
-    num_epochs = 25
-    early_stop_patience = 30
+    num_epochs = 120
+    early_stop_patience = 40
     min_save_epoch = num_epochs
 
     storage_file = os.path.join(base_dir, "Data/seg-study.db")
@@ -488,7 +488,7 @@ def tune_hyperparams(base_dir: str, local: bool):
             min_resource=10, max_resource=num_epochs, reduction_factor=2
         ),
     )
-    study.optimize(tuning_objective, n_trials=15)
+    study.optimize(tuning_objective, n_trials=100)
 
 
 def fit(
@@ -751,6 +751,7 @@ def init_data_loaders(
     train_mask_dir,
     translate_prob,
     val_images,
+    num_workers=4,
 ):
     train_transform = ImageMaskTransform(
         flip_prob=flip_prob,
@@ -768,12 +769,16 @@ def init_data_loaders(
     train_dataset = SegmentationDataset(
         train_image_dir, train_mask_dir, train_images, transform=train_transform
     )
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    train_dataloader = DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers
+    )
     val_transform = ImageMaskTransform(train=False)
     val_dataset = SegmentationDataset(
         train_image_dir, train_mask_dir, val_images, transform=val_transform
     )
-    val_dataloader = DataLoader(val_dataset, batch_size=batch_size)
+    val_dataloader = DataLoader(
+        val_dataset, batch_size=batch_size, num_workers=num_workers
+    )
     return train_dataloader, val_dataloader
 
 
