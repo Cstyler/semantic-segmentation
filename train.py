@@ -3,8 +3,10 @@ import datetime
 import json
 import math
 import os
+import pickle
 import random
 from collections import OrderedDict
+from pathlib import Path
 
 import optuna
 import torch
@@ -377,7 +379,7 @@ def tune_hyperparams(base_dir: str, local: bool):
         elastic_prob = trial.suggest_float("elastic_prob", 0.001, 0.6)
         translate_prob = trial.suggest_float("translate_prob", 0.001, 0.6)
         brightness_prob = trial.suggest_float("brightness_prob", 0.001, 0.6)
-        batch_size = trial.suggest_int("batch_size", 4, 9)
+        batch_size = trial.suggest_int("batch_size", 8, 14)
         if local:
             batch_size = 1
         train_dataloader, val_dataloader = init_data_loaders(
@@ -471,7 +473,9 @@ def tune_hyperparams(base_dir: str, local: bool):
     early_stop_patience = 40
     min_save_epoch = num_epochs
 
-    storage_file = os.path.join(base_dir, "Data/seg-study.db")
+    data_dir = Path(base_dir, "Data")
+    data_dir.mkdir(exist_ok=True)
+    storage_file = data_dir / "seg-study.db"
     storage = f"sqlite:///{storage_file}"
     study_name = f"study-{datetime.datetime.now().strftime('%m%d-%H%M%S')}"
     study = optuna.create_study(
@@ -483,6 +487,11 @@ def tune_hyperparams(base_dir: str, local: bool):
         ),
     )
     study.optimize(tuning_objective, n_trials=100)
+
+    studies_dir = data_dir / "studies"
+    studies_dir.mkdir(exist_ok=True)
+    with open(studies_dir / f"{study_name}.pkl", "wb") as study_file:
+        pickle.dump({"pruner": study.pruner, "sampler": study.sampler}, study_file)
 
 
 def fit(
