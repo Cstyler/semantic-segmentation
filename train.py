@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import gdrive
 import datetime
 import json
 import math
@@ -492,6 +493,9 @@ def tune_hyperparams(base_dir: str, local: bool):
     studies_dir.mkdir(exist_ok=True)
     with open(studies_dir / f"{study_name}.pkl", "wb") as study_file:
         pickle.dump({"pruner": study.pruner, "sampler": study.sampler}, study_file)
+
+    gdrive.upload_experiment(study_name)
+    os.system("poweroff")
 
 
 def fit(
