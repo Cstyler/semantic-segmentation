@@ -380,7 +380,7 @@ def tune_hyperparams(base_dir: str, local: bool):
         elastic_prob = trial.suggest_float("elastic_prob", 0.001, 0.6)
         translate_prob = trial.suggest_float("translate_prob", 0.001, 0.6)
         brightness_prob = trial.suggest_float("brightness_prob", 0.001, 0.6)
-        batch_size = trial.suggest_int("batch_size", 8, 14)
+        batch_size = trial.suggest_int("batch_size", 8, 11)
         if local:
             batch_size = 1
         train_dataloader, val_dataloader = init_data_loaders(
@@ -495,7 +495,9 @@ def tune_hyperparams(base_dir: str, local: bool):
         pickle.dump({"pruner": study.pruner, "sampler": study.sampler}, study_file)
 
     gdrive.upload_experiment(study_name)
-    os.system("poweroff")
+
+    container_id = os.environ.get("CONTAINER_ID")
+    os.system(f"vastai stop instance {container_id}")
 
 
 def fit(
