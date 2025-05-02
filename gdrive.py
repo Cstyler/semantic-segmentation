@@ -8,12 +8,13 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
+from tenacity import retry, wait_exponential, stop_after_attempt
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 base_dir = Path("Data")
-CLIENT_SECRET_FILE = base_dir / "client_secret_992814957758.apps.googleusercontent.json"
+CLIENT_SECRET_FILE = base_dir / "client_secret.json"
 TOKEN_FILE = base_dir / "token.json"
 UPLOAD_FOLDER_ID = "1Q5To9zpCuXB8-6fqjpRNYLc6RElQExwU"
 
@@ -52,15 +53,20 @@ def upload_to_drive(upload_file: Path):
         file_metadata = {"name": upload_file.name, "parents": [UPLOAD_FOLDER_ID]}
         media = MediaFileUpload(str(upload_file), resumable=True)
 
-        file = (
-            service.files()
-            .create(body=file_metadata, media_body=media, fields="id")
-            .execute()
-        )
+        file = execute_upload(file_metadata, media, service)
         print(f"File ID: {file.get('id')}")
 
     except HttpError as error:
         print(f"An error occurred: {error}")
+
+
+@retry(wait=wait_exponential(multiplier=1, min=5, max=30), stop=stop_after_attempt(10))
+def execute_upload(file_metadata: dict, media: MediaFileUpload, service):
+    return (
+        service.files()
+        .create(body=file_metadata, media_body=media, fields="id")
+        .execute()
+    )
 
 
 def upload_experiment(study_name: str):
