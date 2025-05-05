@@ -487,17 +487,24 @@ def tune_hyperparams(base_dir: str, local: bool):
             min_resource=10, max_resource=num_epochs, reduction_factor=2
         ),
     )
-    study.optimize(tuning_objective, n_trials=100)
+    try:
+        study.optimize(tuning_objective, n_trials=100)
+    except Exception as e:
+        print("Error during optimization: ", e)
+    finally:
+        save_study(data_dir, study, study_name)
 
+        container_id = os.environ.get("CONTAINER_ID")
+        os.system(f"vastai stop instance {container_id}")
+
+
+def save_study(data_dir, study, study_name):
     studies_dir = data_dir / "studies"
     studies_dir.mkdir(exist_ok=True)
     with open(studies_dir / f"{study_name}.pkl", "wb") as study_file:
         pickle.dump({"pruner": study.pruner, "sampler": study.sampler}, study_file)
 
     gdrive.upload_experiment(study_name)
-
-    container_id = os.environ.get("CONTAINER_ID")
-    os.system(f"vastai stop instance {container_id}")
 
 
 def fit(
