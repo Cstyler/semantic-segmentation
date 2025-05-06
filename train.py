@@ -473,6 +473,7 @@ def tune_hyperparams(base_dir: str, local: bool):
     num_epochs = 120
     early_stop_patience = 40
     min_save_epoch = num_epochs
+    save_study_interval = 10
 
     data_dir = Path(base_dir, "Data")
     data_dir.mkdir(exist_ok=True)
@@ -487,8 +488,16 @@ def tune_hyperparams(base_dir: str, local: bool):
             min_resource=10, max_resource=num_epochs, reduction_factor=2
         ),
     )
+
+    def save_callback(study: optuna.Study, trial: optuna.trial.FrozenTrial):
+        if not trial.number:
+            return
+        if trial.number % save_study_interval == 0:
+            torch.cuda.empty_cache()
+            save_study(data_dir, study, f"{study_name}-trial-{trial.number}")
+
     try:
-        study.optimize(tuning_objective, n_trials=100)
+        study.optimize(tuning_objective, n_trials=100, callbacks=[save_callback])
     except Exception as e:
         print("Error during optimization: ", e)
     finally:
