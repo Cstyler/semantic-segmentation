@@ -302,12 +302,52 @@ def train_fixed_hyperparams(base_dir: str, local: bool):
         init_datasets(base_dir)
     )
 
-    flip_prob = 0.1
-    rotate_prob = 0.1
-    elastic_prob = 0.11
-    translate_prob = 0.1
-    brightness_prob = 0.1
-    batch_size = 1 if local else 9
+    params = {
+        "batch_size": 8,
+        "brightness_prob": 0.1385,
+        "dropout_p": 0.5329,
+        "elastic_prob": 0.0157,
+        "flip_prob": 0.0427,
+        "lr": 0.000363,
+        "lr_cooldown": 1,
+        "lr_factor": 0.0693,
+        "lr_patience": 18,
+        "min_lr": 1.002e-08,
+        "rotate_prob": 0.472,
+        "translate_prob": 0.1538,
+        "use_adam": True,
+        "use_cosine_scheduler": False,
+        "vanilla_loss": True,
+    }
+
+    num_epochs = 500
+    min_save_epoch = 30
+    early_stop_patience = 50
+    flip_prob = params["flip_prob"]
+    rotate_prob = params["rotate_prob"]
+    elastic_prob = params["elastic_prob"]
+    translate_prob = params["translate_prob"]
+    brightness_prob = params["brightness_prob"]
+    batch_size = params["batch_size"]
+    lr = params["lr"]
+    dropout_p = params["dropout_p"]
+    vanilla_loss = params["vanilla_loss"]
+    use_adam = params["use_adam"]
+    use_cosine_scheduler = params["use_cosine_scheduler"]
+    min_lr = params["min_lr"]
+    t_0 = params.get("t_0", 1)
+    t_mult = params.get("t_mult", 2)
+    lr_patience = params.get("lr_patience", 20)
+    lr_cooldown = params.get("lr_cooldown", 5)
+    lr_factor = params.get("lr_factor", 0.1)
+    momentum = params.get("momentum", 0.99)
+    loss_w0 = params.get("loss_w0", 5)
+    loss_sigma = params.get("loss_sigma", 5)
+    loss_w1 = params.get("loss_w1", 1.0)
+
+    if local:
+        batch_size = 1
+
     train_dataloader, val_dataloader = init_data_loaders(
         batch_size,
         brightness_prob,
@@ -320,27 +360,6 @@ def train_fixed_hyperparams(base_dir: str, local: bool):
         translate_prob,
         val_images,
     )
-
-    lr = 1e-4
-    momentum = 0.99
-    num_epochs = 100
-    min_save_epoch = 2
-    loss_w0, loss_sigma = 5, 5
-    loss_w1 = 1.0
-    dropout_p = 0.2
-    early_stop_patience = 30
-    vanilla_loss = True
-    use_adam = True
-    use_cosine_scheduler = False
-    min_lr = 1e-7
-    # CosineAnnealingWarmRestarts
-    t_0 = 1
-    t_mult = 2
-    # ReduceLROnPlateau
-    lr_patience = 20
-    lr_cooldown = 5
-    lr_factor = 0.1
-
     fit(
         brightness_prob,
         dropout_p,
