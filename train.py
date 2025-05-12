@@ -297,32 +297,18 @@ def iou_loss(predictions, targets, eps=1e-6):
     return iou
 
 
-def train_fixed_hyperparams(base_dir: str, local: bool):
+def train_fixed_hyperparams(
+    base_dir: str,
+    local: bool,
+    params: dict,
+    num_epochs: int,
+    min_save_epoch: int,
+    early_stop_patience: int,
+):
     (train_image_dir, train_images, train_mask_dir, val_images, val_percent) = (
         init_datasets(base_dir)
     )
 
-    params = {
-        "batch_size": 8,
-        "brightness_prob": 0.1385,
-        "dropout_p": 0.5329,
-        "elastic_prob": 0.0157,
-        "flip_prob": 0.0427,
-        "lr": 0.000363,
-        "lr_cooldown": 1,
-        "lr_factor": 0.0693,
-        "lr_patience": 18,
-        "min_lr": 1.002e-08,
-        "rotate_prob": 0.472,
-        "translate_prob": 0.1538,
-        "use_adam": True,
-        "use_cosine_scheduler": False,
-        "vanilla_loss": True,
-    }
-
-    num_epochs = 500
-    min_save_epoch = 30
-    early_stop_patience = 50
     flip_prob = params["flip_prob"]
     rotate_prob = params["rotate_prob"]
     elastic_prob = params["elastic_prob"]
