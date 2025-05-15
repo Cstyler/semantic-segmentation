@@ -304,6 +304,7 @@ def train_fixed_hyperparams(
     num_epochs: int,
     min_save_epoch: int,
     early_stop_patience: int,
+    num_workers: int,
 ):
     (train_image_dir, train_images, train_mask_dir, val_images, val_percent) = (
         init_datasets(base_dir)
@@ -345,6 +346,7 @@ def train_fixed_hyperparams(
         train_mask_dir,
         translate_prob,
         val_images,
+        num_workers,
     )
     fit(
         brightness_prob,
