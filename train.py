@@ -590,145 +590,150 @@ def fit(
     recall_metric_train = BinaryRecall().to(device)
     rand_score_metric_train = RandScore().to(device)
     is_loss_invalid = False
-    for epoch in range(num_epochs):
-        model.train()
-        train_loss = 0.0
-        for images, labels in train_dataloader:
-            images, labels = images.to(device), labels.to(device)
-            optimizer.zero_grad()
-            outputs = model(images)
-            loss = cross_entropy_weighted(
-                outputs,
-                labels.squeeze(1),
-                device,
-                loss_w0,
-                loss_sigma,
-                loss_w1,
-                vanilla=use_vanilla_loss,
-            )
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
-            if math.isnan(train_loss) or math.isinf(train_loss):
-                is_loss_invalid = True
-                break
-            if local:
-                break
-
-        if is_loss_invalid:
-            break
-        model.eval()
-        val_loss, vanilla_loss_val = 0.0, 0.0
-        with torch.no_grad():
-            for images, labels in val_dataloader:
+    try:
+        for epoch in range(num_epochs):
+            model.train()
+            train_loss = 0.0
+            for images, labels in train_dataloader:
                 images, labels = images.to(device), labels.to(device)
+                optimizer.zero_grad()
                 outputs = model(images)
-                labels = labels.squeeze(1)
                 loss = cross_entropy_weighted(
                     outputs,
-                    labels,
+                    labels.squeeze(1),
                     device,
                     loss_w0,
                     loss_sigma,
                     loss_w1,
                     vanilla=use_vanilla_loss,
                 )
-                loss_vanilla = cross_entropy_weighted(
-                    outputs,
-                    labels,
-                    device,
-                    loss_w0,
-                    loss_sigma,
-                    loss_w1,
-                    vanilla=True,
-                )
-                vanilla_loss_val += loss_vanilla.item()
-                val_loss += loss.item()
-                if math.isnan(val_loss) or math.isinf(val_loss):
+                loss.backward()
+                optimizer.step()
+                train_loss += loss.item()
+                if math.isnan(train_loss) or math.isinf(train_loss):
                     is_loss_invalid = True
                     break
-
-                preds = torch.argmax(outputs, dim=1)
-                accuracy_metric_val.update(preds, labels)
-                recall_metric_val.update(preds, labels)
-                precision_metric_val.update(preds, labels)
-                rand_score_metric_val.update(preds.view(-1), labels.view(-1))
                 if local:
                     break
 
             if is_loss_invalid:
                 break
+            model.eval()
+            val_loss, vanilla_loss_val = 0.0, 0.0
+            with torch.no_grad():
+                for images, labels in val_dataloader:
+                    images, labels = images.to(device), labels.to(device)
+                    outputs = model(images)
+                    labels = labels.squeeze(1)
+                    loss = cross_entropy_weighted(
+                        outputs,
+                        labels,
+                        device,
+                        loss_w0,
+                        loss_sigma,
+                        loss_w1,
+                        vanilla=use_vanilla_loss,
+                    )
+                    loss_vanilla = cross_entropy_weighted(
+                        outputs,
+                        labels,
+                        device,
+                        loss_w0,
+                        loss_sigma,
+                        loss_w1,
+                        vanilla=True,
+                    )
+                    vanilla_loss_val += loss_vanilla.item()
+                    val_loss += loss.item()
+                    if math.isnan(val_loss) or math.isinf(val_loss):
+                        is_loss_invalid = True
+                        break
 
-            for images, labels in train_dataloader:
-                images, labels = images.to(device), labels.to(device)
-                outputs = model(images)
-                labels = labels.squeeze(1)
-                preds = torch.argmax(outputs, dim=1)
-                accuracy_metric_train.update(preds, labels)
-                recall_metric_train.update(preds, labels)
-                precision_metric_train.update(preds, labels)
-                rand_score_metric_train.update(preds.view(-1), labels.view(-1))
-                if local:
+                    preds = torch.argmax(outputs, dim=1)
+                    accuracy_metric_val.update(preds, labels)
+                    recall_metric_val.update(preds, labels)
+                    precision_metric_val.update(preds, labels)
+                    rand_score_metric_val.update(preds.view(-1), labels.view(-1))
+                    if local:
+                        break
+
+                if is_loss_invalid:
                     break
 
-        scalars = {
-            "Loss/train": train_loss / len(train_dataloader),
-            "RandError/train": 1 - rand_score_metric_train.compute(),
-            "PixelError/train": 1 - accuracy_metric_train.compute(),
-            "Recall/train": recall_metric_train.compute(),
-            "Precision/train": precision_metric_train.compute(),
-            "Loss/val": val_loss / len(val_dataloader),
-            "VanillaLoss/val": vanilla_loss_val / len(val_dataloader),
-            "RandError/val": 1 - rand_score_metric_val.compute(),
-            "PixelError/val": 1 - accuracy_metric_val.compute(),
-            "Recall/val": recall_metric_val.compute(),
-            "Precision/val": precision_metric_val.compute(),
-        }
+                for images, labels in train_dataloader:
+                    images, labels = images.to(device), labels.to(device)
+                    outputs = model(images)
+                    labels = labels.squeeze(1)
+                    preds = torch.argmax(outputs, dim=1)
+                    accuracy_metric_train.update(preds, labels)
+                    recall_metric_train.update(preds, labels)
+                    precision_metric_train.update(preds, labels)
+                    rand_score_metric_train.update(preds.view(-1), labels.view(-1))
+                    if local:
+                        break
 
-        val_rand_error = scalars["RandError/val"]
-        if use_cosine_scheduler:
-            scheduler.step()
-        else:
-            scheduler.step(val_rand_error)
+            scalars = {
+                "Loss/train": train_loss / len(train_dataloader),
+                "RandError/train": 1 - rand_score_metric_train.compute(),
+                "PixelError/train": 1 - accuracy_metric_train.compute(),
+                "Recall/train": recall_metric_train.compute(),
+                "Precision/train": precision_metric_train.compute(),
+                "Loss/val": val_loss / len(val_dataloader),
+                "VanillaLoss/val": vanilla_loss_val / len(val_dataloader),
+                "RandError/val": 1 - rand_score_metric_val.compute(),
+                "PixelError/val": 1 - accuracy_metric_val.compute(),
+                "Recall/val": recall_metric_val.compute(),
+                "Precision/val": precision_metric_val.compute(),
+            }
 
-        for key, value in scalars.items():
-            writer.add_scalar(key, value, epoch)
-        writer.add_scalar("LearningRate/train", scheduler.get_last_lr()[0], epoch)
+            val_rand_error = scalars["RandError/val"]
+            if use_cosine_scheduler:
+                scheduler.step()
+            else:
+                scheduler.step(val_rand_error)
 
-        print(f"Epoch {epoch + 1}/{num_epochs}, ", end="")
-        print(", ".join([f"{key}: {value:.4f}" for key, value in scalars.items()]))
+            for key, value in scalars.items():
+                writer.add_scalar(key, value, epoch)
+            writer.add_scalar("LearningRate/train", scheduler.get_last_lr()[0], epoch)
 
-        accuracy_metric_val.reset()
-        recall_metric_val.reset()
-        precision_metric_val.reset()
-        rand_score_metric_val.reset()
+            print(f"Epoch {epoch + 1}/{num_epochs}, ", end="")
+            print(", ".join([f"{key}: {value:.4f}" for key, value in scalars.items()]))
 
-        accuracy_metric_train.reset()
-        recall_metric_train.reset()
-        precision_metric_train.reset()
-        rand_score_metric_train.reset()
+            accuracy_metric_val.reset()
+            recall_metric_val.reset()
+            precision_metric_val.reset()
+            rand_score_metric_val.reset()
 
-        if val_rand_error < best_rand_error:
-            no_improve_epochs = 0
-            best_rand_error = val_rand_error
-            best_epoch = epoch + 1
+            accuracy_metric_train.reset()
+            recall_metric_train.reset()
+            precision_metric_train.reset()
+            rand_score_metric_train.reset()
 
-            if best_epoch > min_save_epoch:
-                best_weights = {
-                    k: v.detach().cpu() for k, v in model.state_dict().items()
-                }
-                print(f"Saved the weights in RAM for the epoch {best_epoch}")
-        else:
-            no_improve_epochs += 1
+            if val_rand_error < best_rand_error:
+                no_improve_epochs = 0
+                best_rand_error = val_rand_error
+                best_epoch = epoch + 1
 
-        if no_improve_epochs >= early_stop_patience:
-            print(f"Early stop, best val rand error: {best_rand_error:.4f}")
-            break
+                if best_epoch > min_save_epoch:
+                    best_weights = {
+                        k: v.detach().cpu() for k, v in model.state_dict().items()
+                    }
+                    print(f"Saved the weights in RAM for the epoch {best_epoch}")
+            else:
+                no_improve_epochs += 1
 
-        if trial:
-            trial.report(scalars["VanillaLoss/val"], epoch)
-            if trial.should_prune():
-                raise optuna.TrialPruned()
+            if no_improve_epochs >= early_stop_patience:
+                print(f"Early stop, best val rand error: {best_rand_error:.4f}")
+                break
+
+            if trial:
+                trial.report(scalars["VanillaLoss/val"], epoch)
+                if trial.should_prune():
+                    raise optuna.TrialPruned()
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt: stop training")
+    except Exception as e:
+        print("Exception occurred during train loop:", e)
 
     hparams_dict = dict(
         lr=lr,
