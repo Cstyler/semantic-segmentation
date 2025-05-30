@@ -29,36 +29,43 @@ torch.manual_seed(seed)
 
 
 class UNet(nn.Module):
-    def __init__(self, in_channels=1, out_channels=2, init_features=64, dropout_p=0.5):
+    def __init__(
+        self,
+        in_channels=1,
+        out_channels=2,
+        init_features=64,
+        dropout_p=0.5,
+        padding=False,
+    ):
         # TODO adjust dropout probability
         super().__init__()
         features = init_features
         kernel_size = 3
-        self.encoder1 = block(in_channels, features, kernel_size, "enc1")
+        self.encoder1 = block(in_channels, features, kernel_size, "enc1", padding)
         self.pool = nn.MaxPool2d(stride=2, kernel_size=2)
-        self.encoder2 = block(features, features * 2, kernel_size, "enc2")
-        self.encoder3 = block(features * 2, features * 4, kernel_size, "enc3")
-        self.encoder4 = block(features * 4, features * 8, kernel_size, "enc4")
+        self.encoder2 = block(features, features * 2, kernel_size, "enc2", padding)
+        self.encoder3 = block(features * 2, features * 4, kernel_size, "enc3", padding)
+        self.encoder4 = block(features * 4, features * 8, kernel_size, "enc4", padding)
         self.dropout = nn.Dropout2d(p=dropout_p)
         self.bottleneck_encoder = block(
-            features * 8, features * 16, kernel_size, "bottleneck_enc"
+            features * 8, features * 16, kernel_size, "bottleneck_enc", padding
         )
         self.up_conv1 = nn.ConvTranspose2d(
             features * 16, features * 8, kernel_size=2, stride=2
         )
-        self.decoder1 = block(features * 16, features * 8, kernel_size, "dec1")
+        self.decoder1 = block(features * 16, features * 8, kernel_size, "dec1", padding)
         self.up_conv2 = nn.ConvTranspose2d(
             features * 8, features * 4, kernel_size=2, stride=2
         )
-        self.decoder2 = block(features * 8, features * 4, kernel_size, "dec2")
+        self.decoder2 = block(features * 8, features * 4, kernel_size, "dec2", padding)
         self.up_conv3 = nn.ConvTranspose2d(
             features * 4, features * 2, kernel_size=2, stride=2
         )
-        self.decoder3 = block(features * 4, features * 2, kernel_size, "dec3")
+        self.decoder3 = block(features * 4, features * 2, kernel_size, "dec3", padding)
         self.up_conv4 = nn.ConvTranspose2d(
             features * 2, features, kernel_size=2, stride=2
         )
-        self.decoder4 = block(features * 2, features, kernel_size, "dec4")
+        self.decoder4 = block(features * 2, features, kernel_size, "dec4", padding)
         self.out_conv = nn.Conv2d(features, out_channels, kernel_size=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -113,14 +120,21 @@ def crop_size(encoder, up_conv) -> tuple:
 
 
 def block(
-    in_channels: int, features: int, kernel_size: int, name: str
+    in_channels: int, features: int, kernel_size: int, name: str, use_padding: bool
 ) -> nn.Sequential:
+    padding = "same" if use_padding else 0
     return nn.Sequential(
         OrderedDict(
             [
-                (f"{name}_conv1", nn.Conv2d(in_channels, features, kernel_size)),
+                (
+                    f"{name}_conv1",
+                    nn.Conv2d(in_channels, features, kernel_size, padding=padding),
+                ),
                 (f"{name}_relu1", nn.ReLU(inplace=True)),
-                (f"{name}_conv2", nn.Conv2d(features, features, kernel_size)),
+                (
+                    f"{name}_conv2",
+                    nn.Conv2d(features, features, kernel_size, padding=padding),
+                ),
                 (f"{name}_relu2", nn.ReLU(inplace=True)),
             ]
         )
@@ -208,8 +222,9 @@ class ImageMaskTransform:
         )
 
     def align_inputs(self, image, mask):
-        image = F.pad(image, padding=self.default_pad, padding_mode="reflect")
-        mask = F.center_crop(mask, self.mask_size)
+        if self.default_pad:
+            image = F.pad(image, padding=self.default_pad, padding_mode="reflect")
+            mask = F.center_crop(mask, self.mask_size)
         return image, mask
 
     def __call__(self, image, mask):
@@ -217,9 +232,12 @@ class ImageMaskTransform:
         if self.train:
             if random.random() < self.rotate_prob:
                 image = F.pad(image, padding=self.rotate_pad, padding_mode="reflect")
+                if not self.default_pad:
+                    mask = F.pad(mask, padding=self.rotate_pad, padding_mode="reflect")
                 angle = random.uniform(-self.rotate_angle, self.rotate_angle)
                 if random.random() < self.translate_prob:
-                    mask = F.pad(mask, padding=self.shift_pad, padding_mode="reflect")
+                    if self.default_pad:
+                        mask = F.pad(mask, padding=self.shift_pad, padding_mode="reflect")
                     dx = random.uniform(-self.translate_factor, self.translate_factor)
                     dy = random.uniform(-self.translate_factor, self.translate_factor)
                     translate = (int(dx * self.image_size), int(dy * self.image_size))
@@ -331,6 +349,7 @@ def train_fixed_hyperparams(
     loss_w0 = params.get("loss_w0", 5)
     loss_sigma = params.get("loss_sigma", 5)
     loss_w1 = params.get("loss_w1", 1.0)
+    padding = params.get("padding", False)
 
     if local:
         batch_size = 1
@@ -350,6 +369,7 @@ def train_fixed_hyperparams(
     )
     fit(
         brightness_prob,
+        padding,
         dropout_p,
         early_stop_patience,
         elastic_prob,
@@ -388,6 +408,7 @@ def tune_hyperparams(base_dir: str, local: bool):
         translate_prob = trial.suggest_float("translate_prob", 0.001, 0.6)
         brightness_prob = trial.suggest_float("brightness_prob", 0.001, 0.6)
         batch_size = trial.suggest_int("batch_size", 8, 11)
+        padding = False
         if local:
             batch_size = 1
         train_dataloader, val_dataloader = init_data_loaders(
@@ -443,6 +464,7 @@ def tune_hyperparams(base_dir: str, local: bool):
 
         return fit(
             brightness_prob,
+            padding,
             dropout_p,
             early_stop_patience,
             elastic_prob,
@@ -525,6 +547,7 @@ def save_study(data_dir, study, study_name):
 
 def fit(
     brightness_prob,
+    padding,
     dropout_p,
     early_stop_patience,
     elastic_prob,
@@ -558,7 +581,7 @@ def fit(
     best_rand_error = torch.tensor(float("inf"))
     best_epoch = -1
     best_weights = None
-    model = UNet(dropout_p=dropout_p)
+    model = UNet(dropout_p=dropout_p, padding=padding)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     optimizer = (
@@ -789,6 +812,8 @@ def init_data_loaders(
     translate_prob,
     val_images,
     num_workers=4,
+    input_size=572,
+    mask_size=388,
 ):
     train_transform = ImageMaskTransform(
         flip_prob=flip_prob,
@@ -802,6 +827,8 @@ def init_data_loaders(
         translate_factor=0.1,
         min_brightness=0.1,
         max_brightness=1.7,
+        input_size=input_size,
+        mask_size=mask_size,
     )
     train_dataset = SegmentationDataset(
         train_image_dir, train_mask_dir, train_images, transform=train_transform
