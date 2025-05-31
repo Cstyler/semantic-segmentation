@@ -231,41 +231,10 @@ class ImageMaskTransform:
         aligned = False
         if self.train:
             if random.random() < self.rotate_prob:
-                image = F.pad(image, padding=self.rotate_pad, padding_mode="reflect")
-                if not self.default_pad:
-                    mask = F.pad(mask, padding=self.rotate_pad, padding_mode="reflect")
-                angle = random.uniform(-self.rotate_angle, self.rotate_angle)
-                if random.random() < self.translate_prob:
-                    if self.default_pad:
-                        mask = F.pad(mask, padding=self.shift_pad, padding_mode="reflect")
-                    dx = random.uniform(-self.translate_factor, self.translate_factor)
-                    dy = random.uniform(-self.translate_factor, self.translate_factor)
-                    translate = (int(dx * self.image_size), int(dy * self.image_size))
-                else:
-                    translate = (0, 0)
-                image = F.affine(image, angle, translate, scale=1.0, shear=0.0)
-                mask = F.affine(mask, angle, translate, scale=1.0, shear=0.0)
-                image = F.center_crop(image, self.input_size)
-                mask = F.center_crop(mask, self.mask_size)
+                image, mask = self.affine(image, mask)
                 aligned = True
             elif random.random() < self.elastic_prob:
-                image = F.pad(image, padding=self.elastic_pad, padding_mode="reflect")
-                mask = F.pad(mask, padding=self.elastic_pad, padding_mode="reflect")
-
-                _, height, width = F.get_dimensions(image)
-                displacement = self.elastic_transform.get_params(
-                    self.elastic_transform.alpha,
-                    self.elastic_transform.sigma,
-                    [height, width],
-                )
-
-                interpolation = self.elastic_transform.interpolation
-                fill = self.elastic_transform.fill
-                image = F.elastic_transform(image, displacement, interpolation, fill)
-                image = F.center_crop(image, self.input_size)
-
-                mask = F.elastic_transform(mask, displacement, interpolation, fill)
-                mask = F.center_crop(mask, self.mask_size)
+                image, mask = self.elastic(image, mask)
                 aligned = True
 
             if random.random() < self.flip_prob:
@@ -286,6 +255,46 @@ class ImageMaskTransform:
             image, mask = self.align_inputs(image, mask)
 
         return image, mask
+
+    def elastic(self, image, mask):
+        image = F.pad(image, padding=self.elastic_pad, padding_mode="reflect")
+        mask = F.pad(mask, padding=self.elastic_pad, padding_mode="reflect")
+        _, height, width = F.get_dimensions(image)
+        displacement = self.elastic_transform.get_params(
+            self.elastic_transform.alpha,
+            self.elastic_transform.sigma,
+            [height, width],
+        )
+        interpolation = self.elastic_transform.interpolation
+        fill = self.elastic_transform.fill
+        image = F.elastic_transform(image, displacement, interpolation, fill)
+        image = F.center_crop(image, self.input_size)
+        mask = F.elastic_transform(mask, displacement, interpolation, fill)
+        mask = F.center_crop(mask, self.mask_size)
+        return image, mask
+
+    def affine(self, image, mask):
+        image = F.pad(image, padding=self.rotate_pad, padding_mode="reflect")
+        if not self.default_pad:
+            mask = F.pad(mask, padding=self.rotate_pad, padding_mode="reflect")
+        angle = random.uniform(-self.rotate_angle, self.rotate_angle)
+        if random.random() < self.translate_prob:
+            mask, translate = self.translate(mask)
+        else:
+            translate = (0, 0)
+        image = F.affine(image, angle, translate, scale=1.0, shear=0.0)
+        mask = F.affine(mask, angle, translate, scale=1.0, shear=0.0)
+        image = F.center_crop(image, self.input_size)
+        mask = F.center_crop(mask, self.mask_size)
+        return image, mask
+
+    def translate(self, mask):
+        if self.default_pad:
+            mask = F.pad(mask, padding=self.shift_pad, padding_mode="reflect")
+        dx = random.uniform(-self.translate_factor, self.translate_factor)
+        dy = random.uniform(-self.translate_factor, self.translate_factor)
+        translate = (int(dx * self.image_size), int(dy * self.image_size))
+        return mask, translate
 
 
 def cross_entropy_weighted(
