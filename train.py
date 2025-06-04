@@ -361,6 +361,8 @@ def train_fixed_hyperparams(
     loss_sigma = params.get("loss_sigma", 5)
     loss_w1 = params.get("loss_w1", 1.0)
     padding = params.get("padding", False)
+    mask_size = 512 if padding else 388
+    input_size = 512 if padding else 572
 
     if local:
         batch_size = 1
@@ -377,6 +379,8 @@ def train_fixed_hyperparams(
         translate_prob,
         val_images,
         num_workers,
+        input_size,
+        mask_size,
     )
     fit(
         brightness_prob,
@@ -847,7 +851,9 @@ def init_data_loaders(
     train_dataloader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers
     )
-    val_transform = ImageMaskTransform(train=False)
+    val_transform = ImageMaskTransform(
+        train=False, input_size=input_size, mask_size=mask_size
+    )
     val_dataset = SegmentationDataset(
         train_image_dir, train_mask_dir, val_images, transform=val_transform
     )
