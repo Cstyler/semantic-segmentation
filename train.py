@@ -148,8 +148,6 @@ class SegmentationDataset(Dataset):
         mask_dir: str,
         image_names: list,
         transform=None,
-        mean=0.4924,
-        std=0.1735,
         foreground_value=255,
     ):
         self.transform = transform
@@ -161,7 +159,6 @@ class SegmentationDataset(Dataset):
             image = Image.open(image_path).convert("L")
             mask = Image.open(mask_path).convert("L")
             image = F.to_tensor(image)
-            F.normalize(image, mean=[mean], std=[std], inplace=True)
             mask = (PILToTensor()(mask) == foreground_value).long()
             self.image_data.append(image)
             self.mask_data.append(mask)
@@ -199,6 +196,8 @@ class ImageMaskTransform:
         # TODO automatic rotate pad calc
         rotate_pad=186,
         elastic_pad=50,
+        mean=0.4924,
+        std=0.1735,
     ):
         self.flip_prob = flip_prob
         self.rotate_prob = rotate_prob
@@ -220,6 +219,8 @@ class ImageMaskTransform:
         self.elastic_transform = ElasticTransform(
             alpha=elastic_alpha, sigma=elastic_sigma
         )
+        self.mean = mean
+        self.std = std
 
     def align_inputs(self, image, mask):
         if self.default_pad:
@@ -254,6 +255,7 @@ class ImageMaskTransform:
         if not self.train or not aligned:
             image, mask = self.align_inputs(image, mask)
 
+        F.normalize(image, [self.mean], [self.std], inplace=True)
         return image, mask
 
     def elastic(self, image, mask):
@@ -835,7 +837,7 @@ def init_data_loaders(
         rotate_angle=30,
         translate_factor=0.1,
         min_brightness=0.1,
-        max_brightness=1.7,
+        max_brightness=1.6,
         input_size=input_size,
         mask_size=mask_size,
     )
