@@ -255,7 +255,7 @@ class ImageMaskTransform:
         if not self.train or not aligned:
             image, mask = self.align_inputs(image, mask)
 
-        F.normalize(image, [self.mean], [self.std], inplace=True)
+        image = F.normalize(image, [self.mean], [self.std])
         return image, mask
 
     def elastic(self, image, mask):
