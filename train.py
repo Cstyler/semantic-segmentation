@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-import gdrive
 import datetime
 import json
 import math
@@ -9,6 +8,7 @@ import random
 from collections import OrderedDict
 from pathlib import Path
 
+import click
 import optuna
 import torch
 import torch.nn as nn
@@ -22,6 +22,8 @@ from torch.utils.tensorboard import SummaryWriter
 from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall
 from torchmetrics.clustering import RandScore
 from torchvision.transforms import ElasticTransform, PILToTensor
+
+import gdrive
 
 seed = 7
 random.seed(seed)
@@ -875,5 +877,50 @@ def init_datasets(base_dir: str) -> tuple[str, list, str, list, float]:
     return train_image_dir, train_images, train_mask_dir, val_images, val_percent
 
 
+@click.command()
+@click.option("--tune", is_flag=True, type=bool)
+def main(tune):
+    local = False
+    base_dir = "."
+    if tune:
+        tune_hyperparams(base_dir, local)
+    else:
+        params = {
+            "batch_size": 8,
+            "brightness_prob": 0.3,
+            "dropout_p": 0.5329,
+            "elastic_prob": 0.03,
+            "flip_prob": 0.3,
+            "lr": 0.000363,
+            "lr_cooldown": 40,
+            "lr_factor": 0.7,
+            "lr_patience": 45,
+            "min_lr": 1e-7,
+            "rotate_prob": 0.472,
+            "translate_prob": 0.3,
+            "loss_w0": 1.0,
+            "loss_sigma": 5.0,
+            "loss_w1": 0.0,
+            "use_adam": True,
+            "use_cosine_scheduler": False,
+            "vanilla_loss": False,
+            "padding": True,
+        }
+        num_epochs = 1200
+        min_save_epoch = 50
+        early_stop_patience = 200
+        num_workers = 2
+        best_error = train_fixed_hyperparams(
+            base_dir,
+            local,
+            params,
+            num_epochs,
+            min_save_epoch,
+            early_stop_patience,
+            num_workers,
+        )
+        print(best_error)
+
+
 if __name__ == "__main__":
-    tune_hyperparams(".", local=False)
+    main()
