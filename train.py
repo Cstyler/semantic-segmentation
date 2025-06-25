@@ -11,12 +11,11 @@ from pathlib import Path
 import click
 import optuna
 import torch
-import torch.nn as nn
 import torchvision.transforms.functional as F
 from PIL import Image
 from scipy.ndimage import distance_transform_edt
 from skimage.segmentation import find_boundaries
-from torch import optim
+from torch import nn, optim
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall
@@ -50,22 +49,38 @@ class UNet(nn.Module):
         self.encoder4 = block(features * 4, features * 8, kernel_size, "enc4", padding)
         self.dropout = nn.Dropout2d(p=dropout_p)
         self.bottleneck_encoder = block(
-            features * 8, features * 16, kernel_size, "bottleneck_enc", padding
+            features * 8,
+            features * 16,
+            kernel_size,
+            "bottleneck_enc",
+            padding,
         )
         self.up_conv1 = nn.ConvTranspose2d(
-            features * 16, features * 8, kernel_size=2, stride=2
+            features * 16,
+            features * 8,
+            kernel_size=2,
+            stride=2,
         )
         self.decoder1 = block(features * 16, features * 8, kernel_size, "dec1", padding)
         self.up_conv2 = nn.ConvTranspose2d(
-            features * 8, features * 4, kernel_size=2, stride=2
+            features * 8,
+            features * 4,
+            kernel_size=2,
+            stride=2,
         )
         self.decoder2 = block(features * 8, features * 4, kernel_size, "dec2", padding)
         self.up_conv3 = nn.ConvTranspose2d(
-            features * 4, features * 2, kernel_size=2, stride=2
+            features * 4,
+            features * 2,
+            kernel_size=2,
+            stride=2,
         )
         self.decoder3 = block(features * 4, features * 2, kernel_size, "dec3", padding)
         self.up_conv4 = nn.ConvTranspose2d(
-            features * 2, features, kernel_size=2, stride=2
+            features * 2,
+            features,
+            kernel_size=2,
+            stride=2,
         )
         self.decoder4 = block(features * 2, features, kernel_size, "dec4", padding)
         self.out_conv = nn.Conv2d(features, out_channels, kernel_size=1)
@@ -82,32 +97,36 @@ class UNet(nn.Module):
         crop_bot, crop_top = crop_size(enc4, up_conv1)
         dec1 = self.decoder1(
             torch.cat(
-                (enc4[:, :, crop_bot:crop_top, crop_bot:crop_top], up_conv1), dim=1
-            )
+                (enc4[:, :, crop_bot:crop_top, crop_bot:crop_top], up_conv1),
+                dim=1,
+            ),
         )
 
         up_conv2 = self.up_conv2(dec1)
         crop_bot, crop_top = crop_size(enc3, up_conv2)
         dec2 = self.decoder2(
             torch.cat(
-                (enc3[:, :, crop_bot:crop_top, crop_bot:crop_top], up_conv2), dim=1
-            )
+                (enc3[:, :, crop_bot:crop_top, crop_bot:crop_top], up_conv2),
+                dim=1,
+            ),
         )
 
         up_conv3 = self.up_conv3(dec2)
         crop_bot, crop_top = crop_size(enc2, up_conv3)
         dec3 = self.decoder3(
             torch.cat(
-                (enc2[:, :, crop_bot:crop_top, crop_bot:crop_top], up_conv3), dim=1
-            )
+                (enc2[:, :, crop_bot:crop_top, crop_bot:crop_top], up_conv3),
+                dim=1,
+            ),
         )
 
         up_conv4 = self.up_conv4(dec3)
         crop_bot, crop_top = crop_size(enc1, up_conv4)
         dec4 = self.decoder4(
             torch.cat(
-                (enc1[:, :, crop_bot:crop_top, crop_bot:crop_top], up_conv4), dim=1
-            )
+                (enc1[:, :, crop_bot:crop_top, crop_bot:crop_top], up_conv4),
+                dim=1,
+            ),
         )
 
         output = self.out_conv(dec4)
@@ -122,7 +141,11 @@ def crop_size(encoder, up_conv) -> tuple:
 
 
 def block(
-    in_channels: int, features: int, kernel_size: int, name: str, use_padding: bool
+    in_channels: int,
+    features: int,
+    kernel_size: int,
+    name: str,
+    use_padding: bool,
 ) -> nn.Sequential:
     padding = "same" if use_padding else 0
     return nn.Sequential(
@@ -138,8 +161,8 @@ def block(
                     nn.Conv2d(features, features, kernel_size, padding=padding),
                 ),
                 (f"{name}_relu2", nn.ReLU(inplace=True)),
-            ]
-        )
+            ],
+        ),
     )
 
 
@@ -219,7 +242,8 @@ class ImageMaskTransform:
         self.elastic_pad = elastic_pad
         self.shift_pad = rotate_pad // 2
         self.elastic_transform = ElasticTransform(
-            alpha=elastic_alpha, sigma=elastic_sigma
+            alpha=elastic_alpha,
+            sigma=elastic_sigma,
         )
         self.mean = mean
         self.std = std
@@ -250,7 +274,8 @@ class ImageMaskTransform:
 
             if random.random() < self.brightness_prob:
                 brightness_factor = random.uniform(
-                    self.min_brightness, self.max_brightness
+                    self.min_brightness,
+                    self.max_brightness,
                 )
                 image = F.adjust_brightness(image, brightness_factor)
 
@@ -302,7 +327,13 @@ class ImageMaskTransform:
 
 
 def cross_entropy_weighted(
-    outputs, targets, device, w0=5, sigma=5, w1=1.0, vanilla=False
+    outputs,
+    targets,
+    device,
+    w0=5,
+    sigma=5,
+    w1=1.0,
+    vanilla=False,
 ):
     if vanilla:
         return nn.functional.cross_entropy(outputs, targets)
@@ -459,14 +490,16 @@ def tune_hyperparams(base_dir: str, local: bool):
             lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
             momentum = trial.suggest_float("momentum", 0.1, 0.995)
         use_cosine_scheduler = trial.suggest_categorical(
-            "use_cosine_scheduler", bool_choices
+            "use_cosine_scheduler",
+            bool_choices,
         )
         min_lr = trial.suggest_float("min_lr", 1e-8, 1e-7, log=True)
 
         if use_cosine_scheduler:
             configs = [(1, 2), (10, 2), (50, 1), (100, 1)]
             config_index = trial.suggest_categorical(
-                "cosine_scheduler_config", tuple(range(len(configs)))
+                "cosine_scheduler_config",
+                tuple(range(len(configs))),
             )
             t_0, t_mult = configs[config_index]
             lr_patience = 20
@@ -531,7 +564,9 @@ def tune_hyperparams(base_dir: str, local: bool):
         study_name=study_name,
         storage=storage,
         pruner=optuna.pruners.HyperbandPruner(
-            min_resource=10, max_resource=num_epochs, reduction_factor=2
+            min_resource=10,
+            max_resource=num_epochs,
+            reduction_factor=2,
         ),
     )
 
@@ -608,7 +643,10 @@ def fit(
     )
     scheduler = (
         optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optimizer, T_0=t_0, T_mult=t_mult, eta_min=min_lr
+            optimizer,
+            T_0=t_0,
+            T_mult=t_mult,
+            eta_min=min_lr,
         )
         if use_cosine_scheduler
         else optim.lr_scheduler.ReduceLROnPlateau(
@@ -620,7 +658,8 @@ def fit(
         )
     )
     log_dir = os.path.join(
-        base_dir, f"runs/run_{datetime.datetime.now().strftime('%m%d-%H%M%S')}"
+        base_dir,
+        f"runs/run_{datetime.datetime.now().strftime('%m%d-%H%M%S')}",
     )
     writer = SummaryWriter(log_dir=log_dir)
     accuracy_metric_val = BinaryAccuracy().to(device)
@@ -848,19 +887,32 @@ def init_data_loaders(
         mask_size=mask_size,
     )
     train_dataset = SegmentationDataset(
-        train_image_dir, train_mask_dir, train_images, transform=train_transform
+        train_image_dir,
+        train_mask_dir,
+        train_images,
+        transform=train_transform,
     )
     train_dataloader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
     )
     val_transform = ImageMaskTransform(
-        train=False, input_size=input_size, mask_size=mask_size
+        train=False,
+        input_size=input_size,
+        mask_size=mask_size,
     )
     val_dataset = SegmentationDataset(
-        train_image_dir, train_mask_dir, val_images, transform=val_transform
+        train_image_dir,
+        train_mask_dir,
+        val_images,
+        transform=val_transform,
     )
     val_dataloader = DataLoader(
-        val_dataset, batch_size=batch_size, num_workers=num_workers
+        val_dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
     )
     return train_dataloader, val_dataloader
 

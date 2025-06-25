@@ -8,7 +8,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
-from tenacity import retry, wait_exponential, stop_after_attempt
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
@@ -22,7 +22,7 @@ UPLOAD_FOLDER_ID = "1Q5To9zpCuXB8-6fqjpRNYLc6RElQExwU"
 def create_archive(archive_name: str) -> Path:
     archive_filename = base_dir / f"{archive_name}.zip"
     cmd = f"zip -r {archive_filename} Data/seg-study.db Data/studies runs outputs.txt"
-    subprocess.run(cmd.split(), cwd=base_dir.parent)
+    subprocess.run(cmd.split(), check=False, cwd=base_dir.parent)
     return archive_filename
 
 
@@ -40,7 +40,8 @@ def upload_to_drive(upload_file: Path):
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
-                str(CLIENT_SECRET_FILE), SCOPES
+                str(CLIENT_SECRET_FILE),
+                SCOPES,
             )
             creds = flow.run_local_server(port=0)
         # Save the credentials for the next run
@@ -74,7 +75,7 @@ def upload_experiment(study_name: str):
     if not CLIENT_SECRET_FILE.exists():
         print(f"Error: Credentials file not found at {CLIENT_SECRET_FILE}")
         print(
-            "Please make sure your client_secret.json file is in the correct location."
+            "Please make sure your client_secret.json file is in the correct location.",
         )
     else:
         upload_to_drive(upload_file)

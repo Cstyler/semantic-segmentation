@@ -1,11 +1,12 @@
+from pathlib import Path
+
 import click
-from PIL import Image
-import torchvision.transforms.functional as F
 import matplotlib.pyplot as plt
 import torch
-from train import UNet
+import torchvision.transforms.functional as F
+from PIL import Image
 
-from pathlib import Path
+from train import UNet
 
 
 @click.command("Run model inference on an image")
